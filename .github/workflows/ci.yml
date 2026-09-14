@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Migrations and tests
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql+psycopg2://analytics_ci:analytics_ci@localhost:5432/analytics_ci
+      POSTGRES_MIGRATION_TEST: "1"
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: analytics_ci
+          POSTGRES_USER: analytics_ci
+          POSTGRES_PASSWORD: analytics_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U analytics_ci -d analytics_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r backend/requirements.txt
+
+      - name: Apply migrations
+        run: alembic upgrade head
+
+      - name: Check migration metadata
+        run: alembic check
+
+      - name: Run tests
+        run: pytest -q

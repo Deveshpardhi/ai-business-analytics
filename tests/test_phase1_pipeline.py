@@ -5,8 +5,8 @@ from app.services.analytics_planner import build_analytics_plan
 from app.services.analytics_executor import execute_analysis
 from app.services.insight_discovery import discover_insights
 from app.services.insight_verifier import verify_insights
-from app.services.insight_confidence import calculate_confidence
-from app.services.insight_scoring import score_insights
+from app.services.confidence_engine import apply_confidence
+from app.services.insight_scorer import score_insights
 from app.services.insight_selector import select_top_insights
 
 
@@ -124,7 +124,7 @@ def test_phase1_pipeline_end_to_end(tmp_path):
     )
 
     # 7. Calculate confidence
-    confidence_insights = calculate_confidence(
+    confidence_insights = apply_confidence(
         verified_insights
     )
 

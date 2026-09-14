@@ -2,6 +2,8 @@ import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+import pandas as pd
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db.database import SessionLocal
@@ -16,8 +18,46 @@ from app.services.analytics_planner import build_analytics_plan
 
 router = APIRouter(prefix="/datasets", tags=["Datasets"])
 
-UPLOAD_DIR = Path("storage/uploads")
+BACKEND_DIR = Path(__file__).resolve().parents[2]
+UPLOAD_DIR = BACKEND_DIR / "storage" / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+MAX_UPLOAD_SIZE_BYTES = 25 * 1024 * 1024
+UPLOAD_CHUNK_SIZE = 1024 * 1024
+ALLOWED_EXTENSIONS = {".csv", ".xlsx", ".xls"}
+
+
+def _safe_upload_filename(filename: str | None) -> str:
+    if not filename or "\x00" in filename:
+        raise HTTPException(status_code=400, detail="A valid filename is required.")
+
+    if Path(filename).name != filename or "\\" in filename:
+        raise HTTPException(status_code=400, detail="Unsafe filename.")
+
+    if len(filename) > 255:
+        raise HTTPException(status_code=400, detail="Filename is too long.")
+
+    return filename
+
+
+def _validate_uploaded_content(file_path: Path, extension: str) -> None:
+    """Confirm that the uploaded bytes match the supported tabular format."""
+    with file_path.open("rb") as uploaded_file:
+        header = uploaded_file.read(8)
+
+    if extension == ".xlsx" and not header.startswith(b"PK\x03\x04"):
+        raise ValueError("The file content is not a valid XLSX workbook.")
+    if extension == ".xls" and not header.startswith(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"):
+        raise ValueError("The file content is not a valid XLS workbook.")
+
+    try:
+        if extension == ".csv":
+            if b"\x00" in header:
+                raise ValueError("The file content is not valid CSV text.")
+            pd.read_csv(file_path, nrows=10)
+        else:
+            pd.read_excel(file_path, nrows=10)
+    except Exception as exc:
+        raise ValueError("The file content does not match its extension.") from exc
 
 
 def get_db():
@@ -37,94 +77,104 @@ async def upload_dataset(
     dataset_id: str | None = Form(None),
     db: Session = Depends(get_db),
 ):
-    allowed_extensions = {".csv", ".xlsx", ".xls"}
+    filename = _safe_upload_filename(file.filename)
+    extension = Path(filename).suffix.lower()
 
-    extension = Path(file.filename).suffix.lower()
-
-    if extension not in allowed_extensions:
+    if extension not in ALLOWED_EXTENSIONS:
         raise HTTPException(
             status_code=400,
             detail="Only CSV and Excel files are supported.",
         )
 
-    if dataset_id is None:
-        dataset = Dataset(
-            id=uuid.uuid4(),
-            name=Path(file.filename).stem,
-        )
-
-        db.add(dataset)
-        db.flush()
-
-        version_number = 1
-
-    else:
-        try:
-            dataset_uuid = uuid.UUID(dataset_id)
-        except ValueError:
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid dataset_id.",
-            )
-
-        dataset = (
-            db.query(Dataset)
-            .filter(Dataset.id == dataset_uuid)
-            .first()
-        )
-
-        if dataset is None:
-            raise HTTPException(
-                status_code=404,
-                detail="Dataset not found.",
-            )
-
-        latest_version = (
-            db.query(DatasetVersion)
-            .filter(
-                DatasetVersion.dataset_id == dataset.id
-            )
-            .order_by(
-                DatasetVersion.version_number.desc()
-            )
-            .first()
-        )
-
-        version_number = (
-            latest_version.version_number + 1
-            if latest_version
-            else 1
-        )
-
     file_id = uuid.uuid4()
+    file_path = (UPLOAD_DIR / f"{file_id}{extension}").resolve()
 
-    stored_filename = f"{file_id}{extension}"
+    try:
+        bytes_written = 0
+        with file_path.open("xb") as buffer:
+            while chunk := await file.read(UPLOAD_CHUNK_SIZE):
+                bytes_written += len(chunk)
+                if bytes_written > MAX_UPLOAD_SIZE_BYTES:
+                    raise HTTPException(
+                        status_code=413,
+                        detail="Upload exceeds the 25 MB size limit.",
+                    )
+                buffer.write(chunk)
 
-    file_path = UPLOAD_DIR / stored_filename
+        _validate_uploaded_content(file_path, extension)
+    except HTTPException:
+        file_path.unlink(missing_ok=True)
+        raise
+    except Exception as exc:
+        file_path.unlink(missing_ok=True)
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    contents = await file.read()
+    try:
+        if dataset_id is None:
+            dataset = Dataset(
+                id=uuid.uuid4(),
+                name=Path(filename).stem,
+            )
+            db.add(dataset)
+            db.flush()
+            version_number = 1
+        else:
+            try:
+                dataset_uuid = uuid.UUID(dataset_id)
+            except ValueError as exc:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Invalid dataset_id.",
+                ) from exc
 
-    with open(file_path, "wb") as buffer:
-        buffer.write(contents)
+            dataset = (
+                db.query(Dataset)
+                .filter(Dataset.id == dataset_uuid)
+                .with_for_update()
+                .first()
+            )
 
-    version = DatasetVersion(
-        id=file_id,
-        dataset_id=dataset.id,
-        version_number=version_number,
-        file_name=file.filename,
-        file_path=str(file_path),
-    )
+            if dataset is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Dataset not found.",
+                )
 
-    db.add(version)
+            latest_version = (
+                db.query(DatasetVersion)
+                .filter(DatasetVersion.dataset_id == dataset.id)
+                .order_by(DatasetVersion.version_number.desc())
+                .first()
+            )
+            version_number = latest_version.version_number + 1 if latest_version else 1
 
-    db.commit()
+        version = DatasetVersion(
+            id=file_id,
+            dataset_id=dataset.id,
+            version_number=version_number,
+            file_name=filename,
+            file_path=str(file_path),
+        )
+        db.add(version)
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        file_path.unlink(missing_ok=True)
+        raise HTTPException(
+            status_code=409,
+            detail="A dataset version conflict occurred. Please retry the upload.",
+        ) from exc
+    except Exception:
+        db.rollback()
+        file_path.unlink(missing_ok=True)
+        raise
 
     return {
         "message": "Dataset uploaded successfully",
         "dataset_id": str(dataset.id),
         "dataset_version_id": str(file_id),
         "version_number": version_number,
-        "file_name": file.filename,
+        "file_name": filename,
     }
 
 # validate route
@@ -223,9 +273,8 @@ def profile_dataset_version(
         )
 
     try:
-        profile = profile_dataset(
-            version.file_path
-        )
+        pii_scan = analyze_pii(version.file_path)
+        profile = profile_dataset(version.file_path, pii_scan["protected_columns"])
     except Exception as e:
         raise HTTPException(
             status_code=400,
@@ -260,9 +309,8 @@ def detect_dataset_semantics(
         )
 
     try:
-        semantics = infer_semantics(
-            version.file_path
-        )
+        pii_scan = analyze_pii(version.file_path)
+        semantics = infer_semantics(version.file_path, pii_scan["protected_columns"])
     except Exception as e:
         raise HTTPException(
             status_code=400,
@@ -336,13 +384,10 @@ def create_analytics_plan(
         )
 
     try:
-        profile = profile_dataset(
-            version.file_path
-        )
+        pii_scan = analyze_pii(version.file_path)
+        profile = profile_dataset(version.file_path, pii_scan["protected_columns"])
 
-        semantics = infer_semantics(
-            version.file_path
-        )
+        semantics = infer_semantics(version.file_path, pii_scan["protected_columns"])
 
         plan = build_analytics_plan(
             profile,

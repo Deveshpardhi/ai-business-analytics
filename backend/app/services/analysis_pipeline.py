@@ -48,6 +48,13 @@ def add_lineage(
     return results
 
 
+def determine_analysis_run_status(analysis_results: list[dict]) -> str:
+    """Return a persisted status that reflects every requested analysis."""
+    if any(result.get("status") == "failed" for result in analysis_results):
+        return "partially_completed"
+    return "completed"
+
+
 def run_phase1_analysis(
     file_path: str,
     dataset_id: str | None = None,
@@ -221,10 +228,12 @@ def run_phase1_analysis(
             analysis_run_id,
         )
 
+        run_status = determine_analysis_run_status(analysis_results)
+
         update_analysis_run(
             db,
             analysis_run,
-            status="completed",
+            status=run_status,
             validation_result=validation,
             pii_result=pii_scan,
             profile_result=profile,
@@ -241,7 +250,7 @@ def run_phase1_analysis(
         )
 
         return {
-            "status": "completed",
+            "status": run_status,
             "analysis_run_id": analysis_run_id,
             "validation": validation,
             "pii_scan": pii_scan,

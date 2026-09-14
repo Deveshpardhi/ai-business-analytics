@@ -6,6 +6,7 @@ from app.models.analysis import AnalysisRun
 
 
 def init_db():
+    """Legacy local/test schema helper; production schema changes use Alembic."""
     Base.metadata.create_all(bind=engine)
 
 
