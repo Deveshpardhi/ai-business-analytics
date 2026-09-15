@@ -51,6 +51,7 @@ def get_analysis_run(
         "ranked_insights": analysis_run.ranked_insights,
         "created_at": analysis_run.created_at,
         "explained_insights": analysis_run.explained_insights,
+        "recommended_insights": analysis_run.recommended_insights,
     }
 
 from app.models.dataset import DatasetVersion
