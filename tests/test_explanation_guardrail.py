@@ -66,6 +66,99 @@ def test_invented_number_is_rejected():
     assert 25.0 in result["validation"]["unsupported_numbers"]
 
 
+def test_modified_authoritative_number_is_rejected():
+    def rounding_llm(prompt):
+        return {
+            "text": "The correlation is 0.90 across 10 observations."
+        }
+
+    result = explain_insight(make_insight(), rounding_llm)
+
+    assert result["status"] == "rejected"
+    assert 0.90 in result["validation"]["unsupported_numbers"]
+
+
+def test_only_whitelisted_verified_evidence_is_sent_to_llm():
+    insight = {
+        "insight_type": "correlation",
+        "title": "Age and Salary move together",
+        "source_columns": ["Age", "Salary"],
+        "method": "pearson_correlation",
+        "evidence": {"correlation": 0.9, "sample_size": 10},
+        "verification": {"status": "verified"},
+        "limitations": ["Correlation does not establish causation."],
+        "calculation": {"internal_value": 999},
+        "confidence": {"score": 0.95},
+        "lineage": {"dataset_id": "dataset-secret"},
+        "raw_dataset": [{"Email": "person@example.com"}],
+        "explanation": {"text": "old explanation"},
+        "recommendation": {"action": "old recommendation"},
+    }
+    captured = {}
+
+    def capturing_llm(prompt):
+        captured.update(prompt)
+        prompt["verified_evidence"]["evidence"]["correlation"] = 123
+        return {"text": "The correlation is 0.9 across 10 observations."}
+
+    result = explain_insight(insight, capturing_llm)
+
+    assert result["status"] == "approved"
+    assert set(captured["verified_evidence"]) == {
+        "insight_type",
+        "title",
+        "source_columns",
+        "method",
+        "evidence",
+        "verification",
+        "limitations",
+    }
+    assert "raw_dataset" not in captured["verified_evidence"]
+    assert "person@example.com" not in str(captured["verified_evidence"])
+    assert insight["evidence"]["correlation"] == 0.9
+
+
+def test_unverified_insight_never_calls_llm():
+    called = False
+    insight = make_insight()
+    insight["verification"] = {"status": "failed"}
+
+    def llm_should_not_run(prompt):
+        nonlocal called
+        called = True
+        return {"text": "This should not be generated."}
+
+    result = explain_insight(insight, llm_should_not_run)
+
+    assert result["status"] == "rejected"
+    assert result["validation"]["reason"] == "insight_not_verified"
+    assert called is False
+
+
+def test_malformed_llm_response_is_rejected():
+    result = explain_insight(make_insight(), lambda prompt: {"body": "Missing text"})
+
+    assert result["status"] == "rejected"
+    assert result["validation"]["reason"] == "invalid_response"
+
+
+def test_llm_failure_is_reported_without_raising():
+    def unavailable_llm(prompt):
+        raise RuntimeError("provider timeout")
+
+    result = explain_insight(make_insight(), unavailable_llm)
+
+    assert result == {
+        "status": "unavailable",
+        "explanation": None,
+        "validation": {
+            "valid": False,
+            "reason": "llm_unavailable",
+            "unsupported_numbers": [],
+        },
+    }
+
+
 def test_correlation_explanation_uses_source_columns():
     from app.services.insight_explainer import explain_insight, mock_llm
 

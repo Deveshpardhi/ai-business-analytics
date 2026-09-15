@@ -29,8 +29,9 @@ def extract_numbers(value):
     return numbers
 
 
-def numbers_match(value_a, value_b, tolerance=0.01):
-    return abs(value_a - value_b) <= tolerance
+def numbers_match(value_a, value_b):
+    """Require the provider to preserve authoritative values exactly."""
+    return value_a == value_b
 
 
 def extract_allowed_numbers(insight):

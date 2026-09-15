@@ -1,7 +1,30 @@
+from copy import deepcopy
+
+from pydantic import ValidationError
+
+from app.schemas.explanation import ExplanationResponse, VerifiedEvidenceContext
 from app.services.llm_client import generate_explanation
 
 
-def build_explanation_prompt(insight):
+def build_verified_evidence_context(insight):
+    """Return the only fields that are permitted to cross the LLM boundary."""
+    if insight.get("verification", {}).get("status") != "verified":
+        raise ValueError("Only verified insights can be explained.")
+
+    context = VerifiedEvidenceContext(
+        insight_type=insight["insight_type"],
+        title=insight.get("title", ""),
+        source_columns=deepcopy(insight.get("source_columns", [])),
+        method=insight.get("method", ""),
+        evidence=deepcopy(insight.get("evidence", {})),
+        verification=deepcopy(insight.get("verification", {})),
+        limitations=deepcopy(insight.get("limitations", [])),
+    )
+
+    return context.model_dump()
+
+
+def build_explanation_prompt(verified_evidence):
     return {
         "role": "system",
         "instruction": (
@@ -11,7 +34,7 @@ def build_explanation_prompt(insight):
             "Do not make causal claims from correlation. "
             "Mention important limitations when relevant."
         ),
-        "insight": insight,
+        "verified_evidence": deepcopy(verified_evidence),
     }
 
 
@@ -27,16 +50,66 @@ def validate_explanation(explanation, insight):
 
 
 def explain_insight(insight, llm_function):
-    prompt = build_explanation_prompt(insight)
+    try:
+        verified_evidence = build_verified_evidence_context(insight)
+    except ValueError:
+        return {
+            "status": "rejected",
+            "explanation": None,
+            "validation": {
+                "valid": False,
+                "reason": "insight_not_verified",
+                "unsupported_numbers": [],
+            },
+        }
 
-    explanation = generate_explanation(
-        prompt,
-        llm_function,
-    )
+    prompt = build_explanation_prompt(verified_evidence)
+
+    try:
+        response = generate_explanation(
+            prompt,
+            llm_function,
+        )
+    except Exception:
+        return {
+            "status": "unavailable",
+            "explanation": None,
+            "validation": {
+                "valid": False,
+                "reason": "llm_unavailable",
+                "unsupported_numbers": [],
+            },
+        }
+
+    try:
+        explanation = ExplanationResponse.model_validate(response)
+    except ValidationError:
+        return {
+            "status": "rejected",
+            "explanation": None,
+            "validation": {
+                "valid": False,
+                "reason": "invalid_response",
+                "unsupported_numbers": [],
+            },
+        }
+
+    if not explanation.text.strip():
+        return {
+            "status": "rejected",
+            "explanation": None,
+            "validation": {
+                "valid": False,
+                "reason": "invalid_response",
+                "unsupported_numbers": [],
+            },
+        }
+
+    explanation_data = explanation.model_dump()
 
     validation = validate_explanation(
-        explanation,
-        insight,
+        explanation_data,
+        verified_evidence,
     )
 
     if not validation["valid"]:
@@ -48,13 +121,13 @@ def explain_insight(insight, llm_function):
 
     return {
         "status": "approved",
-        "explanation": explanation,
+        "explanation": explanation_data,
         "validation": validation,
     }
 
 
 def mock_llm(prompt):
-    insight = prompt["insight"]
+    insight = prompt["verified_evidence"]
 
     insight_type = insight.get("insight_type")
 
