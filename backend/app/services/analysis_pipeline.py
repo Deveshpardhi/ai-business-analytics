@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from app.services.insight_explainer import explain_insight, mock_llm
+from app.services.insight_explainer import explain_insight
 from app.services.recommendation_engine import (
     recommend_insight,
     mock_recommendation_llm,
@@ -182,7 +182,6 @@ def run_phase1_analysis(
         for insight in ranked_insights:
             explanation = explain_insight(
                 insight,
-                mock_llm,
             )
 
             explained_insights.append(

@@ -49,7 +49,7 @@ def validate_explanation(explanation, insight):
     )
 
 
-def explain_insight(insight, llm_function):
+def explain_insight(insight, llm_function=None):
     try:
         verified_evidence = build_verified_evidence_context(insight)
     except ValueError:

@@ -13,6 +13,21 @@ pytest -q
 Set `DATABASE_URL` in `.env` before starting the API. The provided
 `docker-compose.yml` defines the development PostgreSQL service.
 
+## Grounded LLM explanations
+
+Optional business-language explanations use the OpenAI Responses API. Configure
+the following variables in `.env` (see `.env.example`):
+
+```text
+LLM_PROVIDER=openai
+LLM_MODEL=your-supported-text-model
+OPENAI_API_KEY=your_api_key
+```
+
+Only verified analytical evidence is sent to the provider. Missing provider
+configuration or a provider failure marks an explanation as unavailable without
+affecting deterministic analysis results.
+
 Apply the schema before starting the application:
 
 ```bash

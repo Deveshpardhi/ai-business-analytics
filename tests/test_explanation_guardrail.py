@@ -159,6 +159,41 @@ def test_llm_failure_is_reported_without_raising():
     }
 
 
+def test_missing_provider_credentials_return_unavailable(monkeypatch):
+    monkeypatch.delenv("LLM_PROVIDER", raising=False)
+    monkeypatch.delenv("LLM_MODEL", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    result = explain_insight(make_insight())
+
+    assert result["status"] == "unavailable"
+    assert result["validation"]["reason"] == "llm_unavailable"
+
+
+def test_configured_provider_exception_returns_unavailable(monkeypatch):
+    from app.services import llm_client
+    from app.services.llm_client import OpenAIExplanationProvider
+
+    class FailingResponses:
+        def create(self, **kwargs):
+            raise RuntimeError("provider timeout")
+
+    class FailingClient:
+        responses = FailingResponses()
+
+    provider = OpenAIExplanationProvider(
+        api_key="test-api-key",
+        model="test-model",
+        client_factory=lambda api_key: FailingClient(),
+    )
+    monkeypatch.setattr(llm_client, "get_configured_provider", lambda: provider)
+
+    result = explain_insight(make_insight())
+
+    assert result["status"] == "unavailable"
+    assert result["validation"]["reason"] == "llm_unavailable"
+
+
 def test_correlation_explanation_uses_source_columns():
     from app.services.insight_explainer import explain_insight, mock_llm
 
