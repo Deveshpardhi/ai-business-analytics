@@ -145,3 +145,57 @@ def test_phase1_pipeline_end_to_end(tmp_path):
         insight.get("verification", {}).get("status") == "verified"
         for insight in ranked_insights
     )
+
+
+def test_unverified_insight_cannot_reach_final_selection():
+    insights = [
+        {
+            "insight_type": "correlation",
+            "title": "Invalid correlation",
+            "source_columns": ["Age", "Salary"],
+            "method": "pearson_correlation",
+            "evidence": {
+                "correlation": 0.99,
+                "p_value": 0.001,
+                "sample_size": 12,
+            },
+            "calculation": {},
+            "verification": {
+                "status": "failed",
+            },
+            "confidence": {},
+            "limitations": [],
+        },
+        {
+            "insight_type": "correlation",
+            "title": "Valid correlation",
+            "source_columns": ["Age", "Salary"],
+            "method": "pearson_correlation",
+            "evidence": {
+                "correlation": 0.90,
+                "p_value": 0.001,
+                "sample_size": 12,
+            },
+            "calculation": {},
+            "verification": {
+                "status": "verified",
+            },
+            "confidence": {},
+            "limitations": [],
+        },
+    ]
+
+    confidence_insights = apply_confidence(insights)
+    scored_insights = score_insights(confidence_insights)
+
+    selected = select_top_insights(
+        scored_insights,
+        top_n=10,
+    )
+
+    assert len(selected) == 1
+    assert selected[0]["title"] == "Valid correlation"
+    assert all(
+        insight["verification"]["status"] == "verified"
+        for insight in selected
+    )

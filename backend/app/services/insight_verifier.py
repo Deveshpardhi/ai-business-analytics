@@ -1,9 +1,32 @@
+from math import isclose
+
 from app.schemas.insight import InsightContract
+
+
+NUMERIC_TOLERANCE = 1e-6
 
 
 def validate_insight(insight: dict) -> dict:
     validated = InsightContract(**insight)
     return validated.model_dump()
+
+
+def _numbers_match(
+    claimed: float | int | None,
+    actual: float | int | None,
+) -> bool:
+    if claimed is None or actual is None:
+        return claimed == actual
+
+    try:
+        return isclose(
+            float(claimed),
+            float(actual),
+            rel_tol=NUMERIC_TOLERANCE,
+            abs_tol=NUMERIC_TOLERANCE,
+        )
+    except (TypeError, ValueError):
+        return False
 
 
 def verify_insight(insight: dict, analysis_result: dict) -> dict:
@@ -39,11 +62,21 @@ def verify_correlation(
     insight: dict,
     analysis_result: dict,
 ) -> dict:
-    correlation = insight["evidence"].get("correlation")
-    p_value = analysis_result.get("p_value")
-    sample_size = analysis_result.get("sample_size")
+    evidence = insight.get("evidence", {})
 
-    if sample_size is None:
+    claimed_correlation = evidence.get("correlation")
+    claimed_p_value = evidence.get("p_value")
+
+    if claimed_p_value is None:
+        claimed_p_value = insight.get("verification", {}).get("p_value")
+
+    claimed_sample_size = evidence.get("sample_size")
+
+    actual_correlation = analysis_result.get("correlation")
+    actual_p_value = analysis_result.get("p_value")
+    actual_sample_size = analysis_result.get("sample_size")
+
+    if actual_sample_size is None:
         return {
             **insight,
             "verification": {
@@ -52,12 +85,12 @@ def verify_correlation(
             },
         }
 
-    if sample_size < 3:
+    if actual_sample_size < 3:
         return {
             **insight,
             "verification": {
                 "status": "insufficient_data",
-                "sample_size": sample_size,
+                "sample_size": actual_sample_size,
                 "reason": (
                     "At least 3 observations are required "
                     "for Pearson correlation testing."
@@ -65,30 +98,83 @@ def verify_correlation(
             },
         }
 
-    if correlation is None:
+    if claimed_correlation is None:
         return {
             **insight,
             "verification": {
                 "status": "failed",
-                "sample_size": sample_size,
+                "sample_size": actual_sample_size,
                 "reason": "Correlation value is missing.",
             },
         }
 
-    if p_value is None:
+    if claimed_p_value is None:
         return {
             **insight,
             "verification": {
                 "status": "failed",
-                "sample_size": sample_size,
-                "correlation": correlation,
+                "sample_size": actual_sample_size,
+                "correlation": claimed_correlation,
                 "reason": "P-value is missing.",
+            },
+        }
+
+    if claimed_sample_size is None:
+        return {
+            **insight,
+            "verification": {
+                "status": "failed",
+                "sample_size": actual_sample_size,
+                "reason": "Sample size is missing from insight evidence.",
+            },
+        }
+
+    mismatches = []
+
+    if not _numbers_match(
+        claimed_correlation,
+        actual_correlation,
+    ):
+        mismatches.append({
+            "field": "correlation",
+            "claimed": claimed_correlation,
+            "actual": actual_correlation,
+        })
+
+    if not _numbers_match(
+        claimed_p_value,
+        actual_p_value,
+    ):
+        mismatches.append({
+            "field": "p_value",
+            "claimed": claimed_p_value,
+            "actual": actual_p_value,
+        })
+
+    if claimed_sample_size != actual_sample_size:
+        mismatches.append({
+            "field": "sample_size",
+            "claimed": claimed_sample_size,
+            "actual": actual_sample_size,
+        })
+
+    if mismatches:
+        return {
+            **insight,
+            "verification": {
+                "status": "failed",
+                "reason": (
+                    "Insight numeric claims do not match "
+                    "the deterministic analysis result."
+                ),
+                "mismatches": mismatches,
+                "method": "pearson_correlation_test",
             },
         }
 
     alpha = 0.05
 
-    if p_value < alpha:
+    if actual_p_value < alpha:
         status = "verified"
         significance = "statistically_significant"
     else:
@@ -99,12 +185,13 @@ def verify_correlation(
         **insight,
         "verification": {
             "status": status,
-            "sample_size": sample_size,
-            "correlation": correlation,
-            "p_value": p_value,
+            "sample_size": actual_sample_size,
+            "correlation": actual_correlation,
+            "p_value": actual_p_value,
             "alpha": alpha,
             "significance": significance,
             "method": "pearson_correlation_test",
+            "numeric_consistency": True,
         },
     }
 
@@ -161,6 +248,8 @@ def verify_group_difference(
 
     p_value = statistical_test.get("p_value")
     statistic = statistical_test.get("statistic")
+    test_name = statistical_test.get("test")
+
     alpha = 0.05
 
     if p_value is None:
@@ -170,6 +259,157 @@ def verify_group_difference(
                 "status": "failed",
                 "reason": "Statistical test is missing p-value.",
                 "group_sizes": group_sizes,
+            },
+        }
+
+    evidence = insight.get("evidence", {})
+
+    claimed_highest_group = evidence.get("highest_group")
+    claimed_lowest_group = evidence.get("lowest_group")
+    claimed_highest_value = evidence.get("highest_value")
+    claimed_lowest_value = evidence.get("lowest_value")
+    claimed_absolute_difference = evidence.get("absolute_difference")
+    claimed_percentage_difference = evidence.get(
+        "percentage_difference"
+    )
+    claimed_statistical_test = evidence.get("statistical_test")
+    claimed_statistic = evidence.get("statistic")
+    claimed_p_value = evidence.get("p_value")
+
+    if claimed_p_value is None:
+        claimed_p_value = insight.get("verification", {}).get("p_value")
+
+    highest_group = max(
+        groups,
+        key=lambda group: group.get("mean", float("-inf")),
+    )
+
+    lowest_group = min(
+        groups,
+        key=lambda group: group.get("mean", float("inf")),
+    )
+
+    actual_highest_group = highest_group.get(dimension)
+    actual_lowest_group = lowest_group.get(dimension)
+
+    actual_highest_value = highest_group.get("mean")
+    actual_lowest_value = lowest_group.get("mean")
+
+    if actual_highest_value is None or actual_lowest_value is None:
+        return {
+            **insight,
+            "verification": {
+                "status": "failed",
+                "reason": "Group means are required for verification.",
+                "group_sizes": group_sizes,
+            },
+        }
+
+    actual_absolute_difference = (
+        actual_highest_value - actual_lowest_value
+    )
+
+    if actual_lowest_value == 0:
+        actual_percentage_difference = None
+    else:
+        actual_percentage_difference = (
+            actual_absolute_difference
+            / abs(actual_lowest_value)
+        ) * 100
+
+    mismatches = []
+
+    if claimed_highest_group != actual_highest_group:
+        mismatches.append({
+            "field": "highest_group",
+            "claimed": claimed_highest_group,
+            "actual": actual_highest_group,
+        })
+
+    if claimed_lowest_group != actual_lowest_group:
+        mismatches.append({
+            "field": "lowest_group",
+            "claimed": claimed_lowest_group,
+            "actual": actual_lowest_group,
+        })
+
+    if not _numbers_match(
+        claimed_highest_value,
+        actual_highest_value,
+    ):
+        mismatches.append({
+            "field": "highest_value",
+            "claimed": claimed_highest_value,
+            "actual": actual_highest_value,
+        })
+
+    if not _numbers_match(
+        claimed_lowest_value,
+        actual_lowest_value,
+    ):
+        mismatches.append({
+            "field": "lowest_value",
+            "claimed": claimed_lowest_value,
+            "actual": actual_lowest_value,
+        })
+
+    if not _numbers_match(
+        claimed_absolute_difference,
+        actual_absolute_difference,
+    ):
+        mismatches.append({
+            "field": "absolute_difference",
+            "claimed": claimed_absolute_difference,
+            "actual": actual_absolute_difference,
+        })
+
+    if not _numbers_match(
+        claimed_percentage_difference,
+        actual_percentage_difference,
+    ):
+        mismatches.append({
+            "field": "percentage_difference",
+            "claimed": claimed_percentage_difference,
+            "actual": actual_percentage_difference,
+        })
+
+    if claimed_statistical_test != test_name:
+        mismatches.append({
+            "field": "statistical_test",
+            "claimed": claimed_statistical_test,
+            "actual": test_name,
+        })
+
+    if not _numbers_match(
+        claimed_statistic,
+        statistic,
+    ):
+        mismatches.append({
+            "field": "statistic",
+            "claimed": claimed_statistic,
+            "actual": statistic,
+        })
+
+    if claimed_p_value is not None and not _numbers_match(
+        claimed_p_value,
+        p_value,
+    ):
+        mismatches.append({
+            "field": "p_value",
+            "claimed": claimed_p_value,
+            "actual": p_value,
+        })
+
+    if mismatches:
+        return {
+            **insight,
+            "verification": {
+                "status": "failed",
+                "reason": (
+                    "Insight numeric or group claims do not match "
+                    "the deterministic analysis result."
+                ),
+                "mismatches": mismatches,
             },
         }
 
@@ -186,11 +426,18 @@ def verify_group_difference(
             "status": status,
             "group_sizes": group_sizes,
             "minimum_group_size": minimum_group_size,
-            "test": statistical_test.get("test"),
+            "test": test_name,
             "statistic": statistic,
             "p_value": p_value,
             "alpha": alpha,
             "significance": significance,
+            "highest_group": actual_highest_group,
+            "lowest_group": actual_lowest_group,
+            "highest_value": actual_highest_value,
+            "lowest_value": actual_lowest_value,
+            "absolute_difference": actual_absolute_difference,
+            "percentage_difference": actual_percentage_difference,
+            "numeric_consistency": True,
         },
     }
 
@@ -311,7 +558,9 @@ def verify_insights(
                 if result_type != "correlation":
                     continue
 
-                if result.get("columns") == insight.get("source_columns"):
+                if result.get("columns") == insight.get(
+                    "source_columns"
+                ):
                     matching_result = result
                     break
 
@@ -321,7 +570,6 @@ def verify_insights(
                 matching_result,
             )
             results.append(validate_insight(verified_insight))
-
         else:
             results.append(
                 validate_insight({
