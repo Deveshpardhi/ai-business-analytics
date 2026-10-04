@@ -295,3 +295,28 @@ def test_golden_missing_values_still_produce_verified_correlation():
         insight["insight_type"] == "correlation"
         for insight in selected
     )
+
+def test_golden_time_series_sorts_dates_and_drops_missing_values():
+    file_path = DATA_DIR / "golden_time_series.csv"
+
+    result = execute_analysis(
+        str(file_path),
+        {
+            "type": "time_series",
+            "measure": "Revenue",
+            "date": "Date",
+        },
+    )
+
+    assert result["type"] == "time_series"
+    assert result["measure"] == "Revenue"
+    assert result["date"] == "Date"
+    assert result["sample_size"] == 4
+    assert result["method"] == "sorted_time_series"
+
+    assert result["data"] == [
+        {"Date": "2026-01-01", "Revenue": 100},
+        {"Date": "2026-01-02", "Revenue": 200},
+        {"Date": "2026-01-03", "Revenue": 300},
+        {"Date": "2026-01-04", "Revenue": 400},
+    ]
