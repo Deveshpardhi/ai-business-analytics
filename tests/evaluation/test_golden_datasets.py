@@ -253,3 +253,45 @@ def test_golden_constant_column_has_explicit_analytics_status():
     assert result["p_value"] is None
 
     assert result["status"] == "insufficient_variation"
+
+def test_golden_correlation_drops_missing_pairs_correctly():
+    file_path = DATA_DIR / "golden_missing_correlation.csv"
+
+    result = execute_analysis(
+        str(file_path),
+        {
+            "type": "correlation",
+            "columns": ["Revenue", "Cost"],
+        },
+    )
+
+    assert result["type"] == "correlation"
+    assert result["status"] == "completed"
+
+    assert result["sample_size"] == 4
+    assert result["correlation"] == 1.0
+    assert result["p_value"] < 0.05
+
+def test_golden_missing_values_still_produce_verified_correlation():
+    discovered, verified, selected = run_golden_pipeline(
+        "golden_missing_correlation.csv"
+    )
+
+    correlation_insights = [
+        insight
+        for insight in verified
+        if insight["insight_type"] == "correlation"
+    ]
+
+    assert len(correlation_insights) == 1
+
+    correlation = correlation_insights[0]
+
+    assert correlation["verification"]["status"] == "verified"
+    assert correlation["verification"]["sample_size"] == 4
+    assert correlation["verification"]["correlation"] == 1.0
+
+    assert any(
+        insight["insight_type"] == "correlation"
+        for insight in selected
+    )
