@@ -10,6 +10,7 @@ from app.services.insight_scorer import score_insights
 from app.services.insight_selector import select_top_insights
 from app.services.insight_verifier import verify_insights
 from app.services.semantic_detector import detect_column_role
+from app.services.analytics_executor import execute_analysis
 
 
 DATA_DIR = Path(__file__).parent / "data"
@@ -213,3 +214,42 @@ def test_golden_tiny_groups_do_not_reach_final_selection():
         insight["insight_type"] == "group_difference"
         for insight in selected
     )
+
+def test_golden_constant_column_does_not_produce_correlation_insight():
+    discovered, verified, selected = run_golden_pipeline(
+        "golden_constant_column.csv"
+    )
+
+    assert not any(
+        insight["insight_type"] == "correlation"
+        for insight in discovered
+    )
+
+    assert not any(
+        insight["insight_type"] == "correlation"
+        for insight in verified
+    )
+
+    assert not any(
+        insight["insight_type"] == "correlation"
+        for insight in selected
+    )
+
+def test_golden_constant_column_has_explicit_analytics_status():
+    file_path = DATA_DIR / "golden_constant_column.csv"
+
+    result = execute_analysis(
+        str(file_path),
+        {
+            "type": "correlation",
+            "columns": ["Revenue", "Cost"],
+        },
+    )
+
+    assert result["type"] == "correlation"
+    assert result["sample_size"] == 6
+
+    assert result["correlation"] is None
+    assert result["p_value"] is None
+
+    assert result["status"] == "insufficient_variation"

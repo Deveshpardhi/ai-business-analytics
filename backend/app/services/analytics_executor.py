@@ -213,6 +213,38 @@ def correlation(df, first, second):
     x = pair[first].to_list()
     y = pair[second].to_list()
 
+    sample_size = pair.height
+
+    if sample_size < 2:
+        return {
+            "type": "correlation",
+            "columns": [first, second],
+            "correlation": None,
+            "p_value": None,
+            "sample_size": sample_size,
+            "method": "pearson_correlation",
+            "status": "insufficient_data",
+            "reason": (
+                "Pearson correlation requires at least two "
+                "paired observations."
+            ),
+        }
+
+    if len(set(x)) < 2 or len(set(y)) < 2:
+        return {
+            "type": "correlation",
+            "columns": [first, second],
+            "correlation": None,
+            "p_value": None,
+            "sample_size": sample_size,
+            "method": "pearson_correlation",
+            "status": "insufficient_variation",
+            "reason": (
+                "Pearson correlation requires variation "
+                "in both columns."
+            ),
+        }
+
     correlation_value, p_value = stats.pearsonr(x, y)
 
     return {
@@ -220,6 +252,7 @@ def correlation(df, first, second):
         "columns": [first, second],
         "correlation": float(correlation_value),
         "p_value": float(p_value),
-        "sample_size": pair.height,
+        "sample_size": sample_size,
         "method": "pearson_correlation",
+        "status": "completed",
     }
