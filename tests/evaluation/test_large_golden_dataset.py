@@ -205,3 +205,105 @@ def test_large_golden_is_reproducible():
         first,
         second,
     )
+
+def test_large_golden_correlation_survives_full_pipeline(
+    large_golden_file,
+):
+    from app.services.insight_discovery import discover_insights
+    from app.services.insight_verifier import verify_insights
+    from app.services.confidence_engine import apply_confidence
+    from app.services.insight_scorer import score_insights
+    from app.services.insight_selector import select_top_insights
+
+    analysis_result = execute_analysis(
+        str(large_golden_file),
+        {
+            "type": "correlation",
+            "columns": [
+                "Revenue",
+                "Cost",
+            ],
+        },
+    )
+
+    analysis_results = [
+        analysis_result,
+    ]
+
+    discovered = discover_insights(
+        analysis_results
+    )
+
+    correlation_insights = [
+        insight
+        for insight in discovered
+        if (
+            insight["insight_type"]
+            == "correlation"
+            and insight["source_columns"]
+            == ["Revenue", "Cost"]
+        )
+    ]
+
+    assert len(correlation_insights) == 1
+
+    verified = verify_insights(
+        discovered,
+        analysis_results,
+    )
+
+    verified_correlations = [
+        insight
+        for insight in verified
+        if (
+            insight["insight_type"]
+            == "correlation"
+            and insight["source_columns"]
+            == ["Revenue", "Cost"]
+        )
+    ]
+
+    assert len(verified_correlations) == 1
+
+    insight = verified_correlations[0]
+
+    assert (
+        insight["verification"]["status"]
+        == "verified"
+    )
+
+    assert (
+        insight["evidence"]["sample_size"]
+        == 100_000
+    )
+
+    assert (
+        insight["evidence"]["correlation"]
+        > 0.99
+    )
+
+    confident = apply_confidence(
+        verified
+    )
+
+    scored = score_insights(
+        confident
+    )
+
+    selected = select_top_insights(
+        scored,
+        top_n=10,
+    )
+
+    selected_correlations = [
+        insight
+        for insight in selected
+        if (
+            insight["insight_type"]
+            == "correlation"
+            and insight["source_columns"]
+            == ["Revenue", "Cost"]
+        )
+    ]
+
+    assert len(selected_correlations) == 1
