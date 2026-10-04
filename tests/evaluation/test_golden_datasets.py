@@ -320,3 +320,47 @@ def test_golden_time_series_sorts_dates_and_drops_missing_values():
         {"Date": "2026-01-03", "Revenue": 300},
         {"Date": "2026-01-04", "Revenue": 400},
     ]
+
+def test_golden_numeric_identifier_is_excluded_from_analytics_plan():
+    file_path = DATA_DIR / "golden_identifier_exclusion.csv"
+    df = pd.read_csv(file_path)
+
+    profile = {
+        "rows": len(df),
+        "columns": len(df.columns),
+    }
+
+    semantics = {
+        "columns": {
+            column: {
+                "role": detect_column_role(column, df[column]),
+                "dtype": str(df[column].dtype),
+            }
+            for column in df.columns
+        }
+    }
+
+    assert semantics["columns"]["TransactionID"]["role"] == "identifier"
+    assert semantics["columns"]["Revenue"]["role"] == "measure"
+    assert semantics["columns"]["Cost"]["role"] == "measure"
+
+    plan = build_analytics_plan(profile, semantics)
+
+    assert "TransactionID" in plan["identifiers"]
+    assert "TransactionID" not in plan["measures"]
+
+    correlation_analyses = [
+        analysis
+        for analysis in plan["analyses"]
+        if analysis["type"] == "correlation"
+    ]
+
+    assert correlation_analyses == [
+        {
+            "type": "correlation",
+            "columns": ["Revenue", "Cost"],
+            "description": (
+                "Analyze the relationship between Revenue and Cost."
+            ),
+        }
+    ]
