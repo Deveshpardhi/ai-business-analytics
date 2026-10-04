@@ -28,6 +28,20 @@ Only verified analytical evidence is sent to the provider. Missing provider
 configuration or a provider failure marks an explanation as unavailable without
 affecting deterministic analysis results.
 
+## Frontend
+
+The React/Vite frontend lives in `frontend`. It uses `http://localhost:8000` by
+default; override this with `VITE_API_BASE_URL` when needed. Start it with:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+The backend allows the Vite development origin by default. Set
+`CORS_ALLOW_ORIGINS` to a comma-separated allowlist for another frontend origin.
+
 Apply the schema before starting the application:
 
 ```bash
