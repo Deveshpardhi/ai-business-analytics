@@ -412,3 +412,79 @@ def test_large_golden_group_difference_survives_full_pipeline(
     ]
 
     assert len(selected_groups) == 1
+
+def test_large_golden_constant_column_is_not_selected(
+    large_golden_file,
+    tmp_path,
+):
+    from app.services.insight_discovery import discover_insights
+    from app.services.insight_verifier import verify_insights
+    from app.services.confidence_engine import apply_confidence
+    from app.services.insight_scorer import score_insights
+    from app.services.insight_selector import select_top_insights
+
+    df = pd.read_csv(large_golden_file)
+
+    # Add a numeric column with zero variance.
+    df["ConstantMetric"] = 100.0
+
+    file_path = tmp_path / "large_constant_metric.csv"
+    df.to_csv(file_path, index=False)
+
+    analysis_result = execute_analysis(
+        str(file_path),
+        {
+            "type": "correlation",
+            "columns": [
+                "Revenue",
+                "ConstantMetric",
+            ],
+        },
+    )
+
+    assert analysis_result["type"] == "correlation"
+    assert analysis_result["sample_size"] == 100_000
+
+    assert analysis_result["status"] == "insufficient_variation"
+    assert analysis_result["correlation"] is None
+    assert analysis_result["p_value"] is None
+
+    analysis_results = [analysis_result]
+
+    discovered = discover_insights(
+        analysis_results
+    )
+
+    correlation_insights = [
+        insight
+        for insight in discovered
+        if insight["insight_type"] == "correlation"
+    ]
+
+    assert correlation_insights == []
+
+    verified = verify_insights(
+        discovered,
+        analysis_results,
+    )
+
+    confident = apply_confidence(
+        verified
+    )
+
+    scored = score_insights(
+        confident
+    )
+
+    selected = select_top_insights(
+        scored,
+        top_n=10,
+    )
+
+    selected_correlations = [
+        insight
+        for insight in selected
+        if insight["insight_type"] == "correlation"
+    ]
+
+    assert selected_correlations == []
