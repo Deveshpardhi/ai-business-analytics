@@ -683,3 +683,531 @@ def test_large_golden_planner_is_reproducible(
     }
 
     assert len(first_plan["analyses"]) == 99
+
+def test_large_golden_core_analytics_finish_within_reasonable_time(
+    large_golden_file,
+):
+    """
+    Performance smoke test.
+
+    This is intentionally not a strict benchmark.
+    It exists to catch severe performance regressions.
+    """
+    import time
+
+    analyses = [
+        {
+            "type": "descriptive_statistics",
+            "measure": "Revenue",
+        },
+        {
+            "type": "group_comparison",
+            "measure": "UnitPrice",
+            "dimension": "Department",
+        },
+        {
+            "type": "correlation",
+            "columns": [
+                "Revenue",
+                "Cost",
+            ],
+        },
+        {
+            "type": "time_series",
+            "measure": "Revenue",
+            "date": "TransactionDate",
+        },
+    ]
+
+    start = time.perf_counter()
+
+    results = [
+        execute_analysis(
+            str(large_golden_file),
+            analysis,
+        )
+        for analysis in analyses
+    ]
+
+    elapsed = time.perf_counter() - start
+
+    assert len(results) == 4
+
+    # Generous CI-safe upper bound.
+    assert elapsed < 5.0
+
+
+def test_large_golden_numeric_semantic_roles_are_stable(
+    large_golden_file,
+):
+    """
+    Numeric business fields that are not primary measures
+    should retain their current generic numeric role.
+    """
+    pii = analyze_pii(
+        str(large_golden_file)
+    )
+
+    semantics = infer_semantics(
+        str(large_golden_file),
+        pii["protected_columns"],
+    )
+
+    expected_numeric = [
+        "Age",
+        "CustomerSatisfaction",
+        "DeliveryDays",
+        "EmployeeCount",
+    ]
+
+    for column in expected_numeric:
+        assert (
+            semantics["columns"][column]["role"]
+            == "numeric"
+        )
+
+    expected_measures = [
+        "UnitsSold",
+        "UnitPrice",
+        "Discount",
+        "Revenue",
+        "Cost",
+        "Profit",
+    ]
+
+    for column in expected_measures:
+        assert (
+            semantics["columns"][column]["role"]
+            == "measure"
+        )
+
+
+def test_large_golden_generic_numeric_columns_are_not_measures(
+    large_golden_file,
+):
+    pii = analyze_pii(
+        str(large_golden_file)
+    )
+
+    semantics = infer_semantics(
+        str(large_golden_file),
+        pii["protected_columns"],
+    )
+
+    plan = build_analytics_plan(
+        {
+            "rows": 100_000,
+            "columns": 20,
+        },
+        semantics,
+    )
+
+    for column in [
+        "Age",
+        "CustomerSatisfaction",
+        "DeliveryDays",
+        "EmployeeCount",
+    ]:
+        assert column not in plan["measures"]
+
+    assert plan["measures"] == [
+        "UnitsSold",
+        "UnitPrice",
+        "Discount",
+        "Revenue",
+        "Cost",
+        "Profit",
+    ]
+
+
+def test_large_golden_identifiers_never_enter_correlation_plan(
+    large_golden_file,
+):
+    pii = analyze_pii(
+        str(large_golden_file)
+    )
+
+    semantics = infer_semantics(
+        str(large_golden_file),
+        pii["protected_columns"],
+    )
+
+    plan = build_analytics_plan(
+        {
+            "rows": 100_000,
+            "columns": 20,
+        },
+        semantics,
+    )
+
+    correlations = [
+        analysis
+        for analysis in plan["analyses"]
+        if analysis["type"] == "correlation"
+    ]
+
+    assert correlations
+
+    for analysis in correlations:
+        columns = analysis["columns"]
+
+        assert "TransactionID" not in columns
+        assert "CustomerID" not in columns
+
+
+def test_large_golden_correlation_plan_has_no_duplicate_pairs(
+    large_golden_file,
+):
+    pii = analyze_pii(
+        str(large_golden_file)
+    )
+
+    semantics = infer_semantics(
+        str(large_golden_file),
+        pii["protected_columns"],
+    )
+
+    plan = build_analytics_plan(
+        {
+            "rows": 100_000,
+            "columns": 20,
+        },
+        semantics,
+    )
+
+    correlations = [
+        analysis
+        for analysis in plan["analyses"]
+        if analysis["type"] == "correlation"
+    ]
+
+    normalized_pairs = [
+        tuple(sorted(analysis["columns"]))
+        for analysis in correlations
+    ]
+
+    assert len(normalized_pairs) == len(
+        set(normalized_pairs)
+    )
+
+    assert len(correlations) == 45
+
+
+def test_correlation_with_one_valid_pair_is_insufficient_data(
+    tmp_path,
+):
+    df = pd.DataFrame(
+        {
+            "Revenue": [
+                100.0,
+                None,
+                None,
+                None,
+            ],
+            "Cost": [
+                80.0,
+                90.0,
+                None,
+                None,
+            ],
+        }
+    )
+
+    file_path = (
+        tmp_path
+        / "correlation_one_valid_pair.csv"
+    )
+
+    df.to_csv(
+        file_path,
+        index=False,
+    )
+
+    result = execute_analysis(
+        str(file_path),
+        {
+            "type": "correlation",
+            "columns": [
+                "Revenue",
+                "Cost",
+            ],
+        },
+    )
+
+    assert result["type"] == "correlation"
+    assert result["sample_size"] == 1
+    assert result["correlation"] is None
+    assert result["p_value"] is None
+    assert result["status"] == "insufficient_data"
+
+
+def test_correlation_with_zero_valid_pairs_is_insufficient_data(
+    tmp_path,
+):
+    df = pd.DataFrame(
+        {
+            "Revenue": [
+                100.0,
+                200.0,
+                None,
+            ],
+            "Cost": [
+                None,
+                None,
+                300.0,
+            ],
+        }
+    )
+
+    file_path = (
+        tmp_path
+        / "correlation_zero_valid_pairs.csv"
+    )
+
+    df.to_csv(
+        file_path,
+        index=False,
+    )
+
+    result = execute_analysis(
+        str(file_path),
+        {
+            "type": "correlation",
+            "columns": [
+                "Revenue",
+                "Cost",
+            ],
+        },
+    )
+
+    assert result["sample_size"] == 0
+    assert result["correlation"] is None
+    assert result["p_value"] is None
+    assert result["status"] == "insufficient_data"
+
+
+def test_constant_columns_on_both_sides_are_insufficient_variation(
+    tmp_path,
+):
+    df = pd.DataFrame(
+        {
+            "Revenue": [
+                100.0,
+                100.0,
+                100.0,
+                100.0,
+            ],
+            "Cost": [
+                50.0,
+                50.0,
+                50.0,
+                50.0,
+            ],
+        }
+    )
+
+    file_path = (
+        tmp_path
+        / "both_constant.csv"
+    )
+
+    df.to_csv(
+        file_path,
+        index=False,
+    )
+
+    result = execute_analysis(
+        str(file_path),
+        {
+            "type": "correlation",
+            "columns": [
+                "Revenue",
+                "Cost",
+            ],
+        },
+    )
+
+    assert result["sample_size"] == 4
+    assert result["correlation"] is None
+    assert result["p_value"] is None
+
+    assert (
+        result["status"]
+        == "insufficient_variation"
+    )
+
+
+def test_large_golden_missing_counts_are_exact(
+    large_golden_file,
+):
+    df = pd.read_csv(
+        large_golden_file
+    )
+
+    expected_missing = {
+        "Age": 250,
+        "Gender": 250,
+        "Discount": 250,
+        "CustomerSatisfaction": 250,
+        "DeliveryDays": 250,
+        "EmployeeCount": 250,
+    }
+
+    for column, expected in expected_missing.items():
+        assert (
+            int(df[column].isna().sum())
+            == expected
+        )
+
+    protected_key_columns = [
+        "TransactionID",
+        "TransactionDate",
+        "CustomerID",
+        "Revenue",
+        "Cost",
+        "Profit",
+    ]
+
+    for column in protected_key_columns:
+        assert df[column].isna().sum() == 0
+
+    assert int(
+        df.isna().sum().sum()
+    ) == 1500
+
+
+def test_large_golden_transaction_ids_are_complete_sequence(
+    large_golden_file,
+):
+    df = pd.read_csv(
+        large_golden_file
+    )
+
+    ids = df["TransactionID"]
+
+    assert len(ids) == 100_000
+    assert ids.is_unique
+    assert ids.min() == 1
+    assert ids.max() == 100_000
+
+    assert ids.tolist() == list(
+        range(1, 100_001)
+    )
+
+
+def test_large_golden_date_contract(
+    large_golden_file,
+):
+    df = pd.read_csv(
+        large_golden_file
+    )
+
+    dates = pd.to_datetime(
+        df["TransactionDate"],
+        errors="raise",
+    )
+
+    assert dates.notna().all()
+
+    assert (
+        dates.min().strftime("%Y-%m-%d")
+        >= "2023-01-01"
+    )
+
+    assert (
+        dates.max().strftime("%Y-%m-%d")
+        <= "2025-12-31"
+    )
+
+    assert dates.dt.year.min() == 2023
+    assert dates.dt.year.max() == 2025
+
+
+def test_large_golden_no_pii_is_deterministic(
+    large_golden_file,
+):
+    first = analyze_pii(
+        str(large_golden_file)
+    )
+
+    second = analyze_pii(
+        str(large_golden_file)
+    )
+
+    assert first == second
+
+    assert first["pii_detected"] is False
+    assert first["protected_columns"] == {}
+
+    assert len(
+        first["safe_columns"]
+    ) == 20
+
+
+def test_large_golden_analysis_results_are_deterministic(
+    large_golden_file,
+):
+    analyses = [
+        {
+            "type": "descriptive_statistics",
+            "measure": "Revenue",
+        },
+        {
+            "type": "group_comparison",
+            "measure": "UnitPrice",
+            "dimension": "Department",
+        },
+        {
+            "type": "correlation",
+            "columns": [
+                "Revenue",
+                "Cost",
+            ],
+        },
+    ]
+
+    for analysis in analyses:
+        first = execute_analysis(
+            str(large_golden_file),
+            analysis,
+        )
+
+        second = execute_analysis(
+            str(large_golden_file),
+            analysis,
+        )
+
+        assert first == second
+
+def test_large_golden_anova_underflow_is_reproducible(
+    large_golden_file,
+):
+    analysis = {
+        "type": "group_comparison",
+        "measure": "UnitPrice",
+        "dimension": "Department",
+    }
+
+    first = execute_analysis(
+        str(large_golden_file),
+        analysis,
+    )
+
+    second = execute_analysis(
+        str(large_golden_file),
+        analysis,
+    )
+
+    first_test = first["statistical_test"]
+    second_test = second["statistical_test"]
+
+    assert first_test == second_test
+
+    assert first_test["p_value"] == 0.0
+    assert (
+        first_test["p_value_underflow"]
+        is True
+    )
+
+    assert first_test["sample_size"] == 100_000
+    assert first_test["group_count"] == 4
