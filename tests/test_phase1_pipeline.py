@@ -54,6 +54,26 @@ def test_phase1_pipeline_end_to_end(tmp_path):
         df["JoiningDate"]
     ) == "date"
 
+    assert detect_column_role(
+        "TransactionID",
+        pd.Series([1001, 1002, 1003])
+    ) == "identifier"
+
+    assert detect_column_role(
+        "CustomerID",
+        pd.Series(["C001", "C002", "C003"])
+    ) == "identifier"
+
+    assert detect_column_role(
+        "SalesChannel",
+        pd.Series(["Online", "Store", "Online"])
+    ) == "dimension"
+
+    assert detect_column_role(
+        "Returned",
+        pd.Series(["Yes", "No", "No"])
+    ) == "dimension"
+
     # 2. Build analytics plan
     profile = {
         "rows": len(df),
@@ -199,3 +219,29 @@ def test_unverified_insight_cannot_reach_final_selection():
         insight["verification"]["status"] == "verified"
         for insight in selected
     )
+
+def test_anova_p_value_underflow_is_marked():
+    import polars as pl
+    from app.services.analytics_executor import group_comparison
+
+    df = pl.DataFrame(
+        {
+            "Department": ["A"] * 100 + ["B"] * 100 + ["C"] * 100,
+            "UnitPrice": (
+                [10.0] * 100
+                + [100.0] * 100
+                + [1000.0] * 100
+            ),
+        }
+    )
+
+    result = group_comparison(
+        df,
+        "UnitPrice",
+        "Department",
+    )
+
+    statistical_test = result["statistical_test"]
+
+    assert statistical_test["p_value"] == 0.0
+    assert statistical_test["p_value_underflow"] is True

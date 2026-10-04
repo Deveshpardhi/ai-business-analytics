@@ -15,8 +15,20 @@ def extract_numbers(value):
         numbers.append(float(value))
 
     elif isinstance(value, str):
-        matches = re.findall(r"-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?", value)
-        numbers.extend(float(match) for match in matches)
+        for line in value.splitlines():
+            stripped = line.lstrip()
+
+            # Ignore Markdown ordered-list markers such as:
+            # "1. First point"
+            # "2. Second point"
+            if re.match(r"^\d+\.\s", stripped):
+                stripped = re.sub(r"^\d+\.\s", "", stripped)
+
+            matches = re.findall(
+                r"-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?",
+                stripped,
+            )
+            numbers.extend(float(match) for match in matches)
 
     elif isinstance(value, dict):
         for item in value.values():

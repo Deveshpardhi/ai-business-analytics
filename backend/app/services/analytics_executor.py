@@ -113,6 +113,7 @@ def descriptive_statistics(
     }
 
 
+
 def group_comparison(df, measure, dimension):
     grouped = (
         df
@@ -163,10 +164,13 @@ def group_comparison(df, measure, dimension):
     elif len(group_values) >= 2:
         statistic, p_value = stats.f_oneway(*group_values)
 
+        p_value = float(p_value)
+
         statistical_test = {
             "test": "one_way_anova",
             "statistic": float(statistic),
-            "p_value": float(p_value),
+            "p_value": p_value,
+            "p_value_underflow": p_value == 0.0,
             "sample_size": sum(
                 len(values)
                 for values in group_values

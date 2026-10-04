@@ -30,8 +30,11 @@ def build_explanation_prompt(verified_evidence):
         "instruction": (
             "Explain the provided business insight clearly for a business user. "
             "Use only numbers present in the evidence or verification. "
-            "Do not calculate, estimate, round, or invent numbers. "
-            "Do not make causal claims from correlation. "
+            "Preserve every numeric value exactly as provided, including all digits "
+            "and scale. Do not convert units, divide or multiply values, express "
+            "thousands as shorter values, calculate, estimate, round, or invent "
+            "numbers. For example, if the evidence contains 82000, the explanation "
+            "must say 82000, not 82. Do not make causal claims from correlation. "
             "Mention important limitations when relevant."
         ),
         "verified_evidence": deepcopy(verified_evidence),

@@ -11,11 +11,10 @@ import pandas as pd
 ID_PATTERNS = [
     r"(^|_)id$",
     r"(^|_)id(_|$)",
+    r"^[a-z]+id$",
     r"(^|_)code$",
     r"uuid",
     r"identifier",
-    r"employeeid",
-    r"employee_id",
 ]
 
 DATE_PATTERNS = [
@@ -147,7 +146,7 @@ def detect_column_role(
     # 5. Low-cardinality text
     # -----------------------------------------------------
 
-    if pd.api.types.is_object_dtype(series):
+    if pd.api.types.is_string_dtype(series):
 
         unique_count = series.nunique(
             dropna=True

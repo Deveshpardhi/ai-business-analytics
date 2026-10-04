@@ -172,7 +172,7 @@ def test_missing_provider_credentials_return_unavailable(monkeypatch):
 
 def test_configured_provider_exception_returns_unavailable(monkeypatch):
     from app.services import llm_client
-    from app.services.llm_client import OpenAIExplanationProvider
+    from app.services.llm_client import AzureOpenAIExplanationProvider
 
     class FailingResponses:
         def create(self, **kwargs):
@@ -181,10 +181,11 @@ def test_configured_provider_exception_returns_unavailable(monkeypatch):
     class FailingClient:
         responses = FailingResponses()
 
-    provider = OpenAIExplanationProvider(
+    provider = AzureOpenAIExplanationProvider(
         api_key="test-api-key",
+        endpoint="https://example.openai.azure.com",
         model="test-model",
-        client_factory=lambda api_key: FailingClient(),
+        client_factory=lambda api_key, endpoint: FailingClient(),
     )
     monkeypatch.setattr(llm_client, "get_configured_provider", lambda: provider)
 
@@ -227,3 +228,31 @@ def test_extract_numbers_from_scientific_notation():
     result = extract_numbers("p-value is 1.3699559531952885e-19")
 
     assert result == [1.3699559531952885e-19]
+
+def test_extract_numbers_ignores_markdown_ordered_list_markers():
+    text = """1. The correlation is 0.9062919244242602.
+2. The p-value is 0.00030088019266998647.
+3. The sample size is 10."""
+
+    result = extract_numbers(text)
+
+    assert result == [
+        0.9062919244242602,
+        0.00030088019266998647,
+        10.0,
+    ]
+
+
+def test_markdown_ordered_list_does_not_bypass_unsupported_number_detection():
+    def bad_llm(prompt):
+        return {
+            "text": """1. The correlation is 0.9062919244242602.
+2. The sample contains 10 observations.
+3. The expected salary increase is 25%."""
+        }
+
+    result = explain_insight(make_insight(), bad_llm)
+
+    assert result["status"] == "rejected"
+    assert result["validation"]["valid"] is False
+    assert 25.0 in result["validation"]["unsupported_numbers"]
