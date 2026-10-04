@@ -488,3 +488,41 @@ def test_large_golden_constant_column_is_not_selected(
     ]
 
     assert selected_correlations == []
+
+def test_large_golden_correlation_drops_missing_pairs_correctly(
+    large_golden_file,
+    tmp_path,
+):
+    df = pd.read_csv(large_golden_file)
+
+    # Introduce deterministic missing values into Revenue and Cost.
+    revenue_missing = df.index[:1000]
+    cost_missing = df.index[1000:2500]
+
+    df.loc[revenue_missing, "Revenue"] = pd.NA
+    df.loc[cost_missing, "Cost"] = pd.NA
+
+    file_path = tmp_path / "large_missing_pairs.csv"
+    df.to_csv(file_path, index=False)
+
+    result = execute_analysis(
+        str(file_path),
+        {
+            "type": "correlation",
+            "columns": [
+                "Revenue",
+                "Cost",
+            ],
+        },
+    )
+
+    assert result["type"] == "correlation"
+    assert result["status"] == "completed"
+
+    # 1000 missing Revenue rows
+    # + 1500 different missing Cost rows
+    # = 2500 invalid pairs
+    assert result["sample_size"] == 97_500
+
+    assert result["correlation"] > 0.99
+    assert result["p_value"] == 0.0
