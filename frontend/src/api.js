@@ -1,4 +1,3 @@
-
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 
@@ -24,8 +23,10 @@ async function request(path, options = {}) {
   return payload;
 }
 
+
 export function uploadDataset(file) {
   const formData = new FormData();
+
   formData.append("file", file);
 
   return request("/datasets/upload", {
@@ -34,22 +35,62 @@ export function uploadDataset(file) {
   });
 }
 
+
 export function loadDatasetOverview(datasetVersionId) {
   return Promise.all([
-    request(`/datasets/${datasetVersionId}/validate`, { method: "POST" }),
-    request(`/datasets/${datasetVersionId}/pii-scan`, { method: "POST" }),
-    request(`/datasets/${datasetVersionId}/profile`),
-    request(`/datasets/${datasetVersionId}/semantics`),
-  ]).then(([validation, pii, profile, semantics]) => ({
-    validation: validation.validation,
-    pii: pii.pii_scan,
-    profile: profile.profile,
-    semantics: semantics.semantics,
-  }));
+    request(
+      `/datasets/${datasetVersionId}/validate`,
+      { method: "POST" }
+    ),
+    request(
+      `/datasets/${datasetVersionId}/pii-scan`,
+      { method: "POST" }
+    ),
+    request(
+      `/datasets/${datasetVersionId}/profile`
+    ),
+    request(
+      `/datasets/${datasetVersionId}/semantics`
+    ),
+  ]).then(
+    ([validation, pii, profile, semantics]) => ({
+      validation: validation.validation,
+      pii: pii.pii_scan,
+      profile: profile.profile,
+      semantics: semantics.semantics,
+    })
+  );
 }
 
+
+export function loadDatasetPlan(datasetVersionId) {
+  return request(
+    `/datasets/${datasetVersionId}/plan`
+  ).then(
+    (payload) => payload.analytics_plan
+  );
+}
+
+
 export function analyzeDataset(datasetVersionId) {
-  return request(`/datasets/${datasetVersionId}/analyze`, {
-    method: "POST",
-  });
+  return request(
+    `/datasets/${datasetVersionId}/analyze`,
+    {
+      method: "POST",
+    }
+  );
+}
+
+
+export function loadAnalysisRun(analysisRunId) {
+  return request(
+    `/analysis-runs/${analysisRunId}`
+  );
+}
+
+
+export function loadAnalysisRuns(datasetVersionId) {
+  return request(
+    `/analysis-runs/dataset-version/${datasetVersionId}`
+  );
 }
