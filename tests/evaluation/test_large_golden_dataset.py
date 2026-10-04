@@ -526,3 +526,160 @@ def test_large_golden_correlation_drops_missing_pairs_correctly(
 
     assert result["correlation"] > 0.99
     assert result["p_value"] == 0.0
+
+def test_large_golden_planner_is_reproducible():
+    from app.security.pii_detector import analyze_pii
+    from app.services.semantic_detector import infer_semantics
+    from app.services.analytics_planner import build_analytics_plan
+
+    first_df = build_large_golden_dataset()
+    second_df = build_large_golden_dataset()
+
+    first_path = Path("tests/evaluation/.tmp_large_first.csv")
+    second_path = Path("tests/evaluation/.tmp_large_second.csv")
+
+    try:
+        first_df.to_csv(first_path, index=False)
+        second_df.to_csv(second_path, index=False)
+
+        first_pii = analyze_pii(str(first_path))
+        second_pii = analyze_pii(str(second_path))
+
+        first_semantics = infer_semantics(
+            str(first_path),
+            first_pii["protected_columns"],
+        )
+
+        second_semantics = infer_semantics(
+            str(second_path),
+            second_pii["protected_columns"],
+        )
+
+        first_plan = build_analytics_plan(
+            {
+                "rows": 100_000,
+                "columns": 20,
+            },
+            first_semantics,
+        )
+
+        second_plan = build_analytics_plan(
+            {
+                "rows": 100_000,
+                "columns": 20,
+            },
+            second_semantics,
+        )
+
+        assert first_semantics == second_semantics
+        assert first_plan == second_plan
+
+        assert first_plan["measures"] == [
+            "UnitsSold",
+            "UnitPrice",
+            "Discount",
+            "Revenue",
+            "Cost",
+            "Profit",
+        ]
+
+        assert first_plan["dimensions"] == [
+            "Gender",
+            "Region",
+            "Department",
+            "ProductCategory",
+            "Product",
+            "SalesChannel",
+            "Returned",
+        ]
+
+        assert first_plan["dates"] == [
+            "TransactionDate",
+        ]
+
+        assert first_plan["identifiers"] == [
+            "TransactionID",
+            "CustomerID",
+        ]
+
+        counts = {}
+
+        for analysis in first_plan["analyses"]:
+            analysis_type = analysis["type"]
+            counts[analysis_type] = (
+                counts.get(analysis_type, 0) + 1
+            )
+
+        assert counts == {
+            "descriptive_statistics": 6,
+            "group_comparison": 42,
+            "time_series": 6,
+            "correlation": 45,
+        }
+
+        assert len(first_plan["analyses"]) == 99
+
+    finally:
+        first_path.unlink(missing_ok=True)
+        second_path.unlink(missing_ok=True)
+
+def test_large_golden_planner_is_reproducible(
+    tmp_path,
+):
+    first_df = build_large_golden_dataset()
+    second_df = build_large_golden_dataset()
+
+    first_path = tmp_path / "large_first.csv"
+    second_path = tmp_path / "large_second.csv"
+
+    first_df.to_csv(first_path, index=False)
+    second_df.to_csv(second_path, index=False)
+
+    first_pii = analyze_pii(str(first_path))
+    second_pii = analyze_pii(str(second_path))
+
+    first_semantics = infer_semantics(
+        str(first_path),
+        first_pii["protected_columns"],
+    )
+
+    second_semantics = infer_semantics(
+        str(second_path),
+        second_pii["protected_columns"],
+    )
+
+    first_plan = build_analytics_plan(
+        {
+            "rows": 100_000,
+            "columns": 20,
+        },
+        first_semantics,
+    )
+
+    second_plan = build_analytics_plan(
+        {
+            "rows": 100_000,
+            "columns": 20,
+        },
+        second_semantics,
+    )
+
+    assert first_semantics == second_semantics
+    assert first_plan == second_plan
+
+    counts = {}
+
+    for analysis in first_plan["analyses"]:
+        analysis_type = analysis["type"]
+        counts[analysis_type] = (
+            counts.get(analysis_type, 0) + 1
+        )
+
+    assert counts == {
+        "descriptive_statistics": 6,
+        "group_comparison": 42,
+        "time_series": 6,
+        "correlation": 45,
+    }
+
+    assert len(first_plan["analyses"]) == 99
