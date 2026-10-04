@@ -23,10 +23,15 @@ PII_PATTERNS = {
     ],
     "name": [
         r"full_name",
+        r"fullname",
         r"first_name",
+        r"firstname",
         r"last_name",
+        r"lastname",
         r"customer_name",
+        r"customername",
         r"employee_name",
+        r"employeename",
     ],
     "government_id": [
         r"aadhaar",

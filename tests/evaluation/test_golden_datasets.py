@@ -11,6 +11,9 @@ from app.services.insight_selector import select_top_insights
 from app.services.insight_verifier import verify_insights
 from app.services.semantic_detector import detect_column_role
 from app.services.analytics_executor import execute_analysis
+from app.security.pii_detector import analyze_pii
+from app.services.semantic_detector import infer_semantics
+from app.services.insight_explainer import build_verified_evidence_context
 
 
 DATA_DIR = Path(__file__).parent / "data"
@@ -364,3 +367,125 @@ def test_golden_numeric_identifier_is_excluded_from_analytics_plan():
             ),
         }
     ]
+
+def test_golden_pii_columns_are_excluded_before_analytics_planning():
+    file_path = DATA_DIR / "golden_pii_protection.csv"
+
+    pii_scan = analyze_pii(str(file_path))
+
+    assert pii_scan["pii_detected"] is True
+
+    assert set(pii_scan["protected_columns"]) == {
+        "CustomerName",
+        "Email",
+        "Phone",
+    }
+
+    assert set(pii_scan["safe_columns"]) == {
+        "Revenue",
+        "Cost",
+    }
+
+    semantics = infer_semantics(
+        str(file_path),
+        pii_scan["protected_columns"],
+    )
+
+    assert "CustomerName" not in semantics["columns"]
+    assert "Email" not in semantics["columns"]
+    assert "Phone" not in semantics["columns"]
+
+    assert semantics["columns"]["Revenue"]["role"] == "measure"
+    assert semantics["columns"]["Cost"]["role"] == "measure"
+
+    profile = {
+        "rows": 6,
+        "columns": len(semantics["columns"]),
+    }
+
+    plan = build_analytics_plan(profile, semantics)
+
+    planned_columns = str(plan)
+
+    assert "CustomerName" not in planned_columns
+    assert "Email" not in planned_columns
+    assert "Phone" not in planned_columns
+
+    assert "Revenue" in plan["measures"]
+    assert "Cost" in plan["measures"]
+
+def test_golden_pii_protected_dataset_allows_only_safe_analytics():
+    file_path = DATA_DIR / "golden_pii_protection.csv"
+
+    pii_scan = analyze_pii(str(file_path))
+
+    result = execute_analysis(
+        str(file_path),
+        {
+            "type": "correlation",
+            "columns": ["Revenue", "Cost"],
+        },
+        protected_columns=pii_scan["protected_columns"],
+    )
+
+    assert result["type"] == "correlation"
+    assert result["status"] == "completed"
+    assert result["columns"] == ["Revenue", "Cost"]
+    assert result["sample_size"] == 6
+
+def test_golden_llm_boundary_excludes_raw_and_unapproved_fields():
+    insight = {
+        "insight_type": "correlation",
+        "title": "Revenue and Cost are strongly related",
+        "source_columns": ["Revenue", "Cost"],
+        "method": "pearson_correlation",
+        "evidence": {
+            "correlation": 1.0,
+            "p_value": 0.0,
+            "sample_size": 6,
+        },
+        "calculation": {
+            "formula": "should not cross boundary",
+        },
+        "verification": {
+            "status": "verified",
+            "correlation": 1.0,
+            "p_value": 0.0,
+            "sample_size": 6,
+        },
+        "confidence": {
+            "level": "high",
+        },
+        "limitations": [
+            "Correlation does not imply causation.",
+        ],
+
+        # Deliberately forbidden/unapproved data
+        "raw_dataset": [
+            {
+                "CustomerName": "Aarav Sharma",
+                "Email": "aarav@example.com",
+                "Phone": "9876543210",
+            }
+        ],
+        "lineage": {
+            "private": "internal",
+        },
+        "recommendation": {
+            "private": "internal",
+        },
+    }
+
+    context = build_verified_evidence_context(insight)
+
+    assert "raw_dataset" not in context
+    assert "calculation" not in context
+    assert "confidence" not in context
+    assert "lineage" not in context
+    assert "recommendation" not in context
+
+    serialized = str(context)
+
+    assert "aarav@example.com" not in serialized
+    assert "9876543210" not in serialized
+    assert "Aarav Sharma" not in serialized
