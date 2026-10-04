@@ -123,3 +123,93 @@ def test_golden_outlier():
         insight["insight_type"] == "outlier"
         for insight in selected
     )
+
+def test_golden_group_difference():
+    discovered, verified, selected = run_golden_pipeline(
+        "golden_group_difference.csv"
+    )
+
+    discovered_group_insights = [
+        insight
+        for insight in discovered
+        if insight["insight_type"] == "group_difference"
+    ]
+
+    assert len(discovered_group_insights) == 1
+
+    discovered_group = discovered_group_insights[0]
+
+    assert discovered_group["source_columns"] == [
+        "Revenue",
+        "Department",
+    ]
+
+    assert discovered_group["evidence"]["highest_group"] == "West"
+    assert discovered_group["evidence"]["highest_value"] == 312.5
+
+    assert discovered_group["evidence"]["lowest_group"] == "North"
+    assert discovered_group["evidence"]["lowest_value"] == 112.5
+
+    assert discovered_group["evidence"]["absolute_difference"] == 200.0
+
+    assert (
+        discovered_group["evidence"]["statistical_test"]
+        == "one_way_anova"
+    )
+
+    assert discovered_group["evidence"]["p_value"] is not None
+    assert discovered_group["evidence"]["p_value"] < 0.05
+
+    verified_group_insights = [
+        insight
+        for insight in verified
+        if insight["insight_type"] == "group_difference"
+    ]
+
+    assert len(verified_group_insights) == 1
+
+    verified_group = verified_group_insights[0]
+
+    assert verified_group["verification"]["status"] == "verified"
+
+    assert any(
+        insight["insight_type"] == "group_difference"
+        for insight in selected
+    )
+
+def test_golden_tiny_groups_do_not_reach_final_selection():
+    discovered, verified, selected = run_golden_pipeline(
+        "golden_tiny_groups.csv"
+    )
+
+    discovered_group_insights = [
+        insight
+        for insight in discovered
+        if insight["insight_type"] == "group_difference"
+    ]
+
+    # A descriptive candidate may still be discovered because
+    # the deterministic group means can be calculated.
+    assert len(discovered_group_insights) == 1
+
+    verified_group_insights = [
+        insight
+        for insight in verified
+        if insight["insight_type"] == "group_difference"
+    ]
+
+    assert len(verified_group_insights) == 1
+
+    group_insight = verified_group_insights[0]
+
+    assert (
+        group_insight["verification"]["status"]
+        == "insufficient_data"
+    )
+
+    # Insufficient statistical evidence must never become
+    # a final selected business insight.
+    assert not any(
+        insight["insight_type"] == "group_difference"
+        for insight in selected
+    )
