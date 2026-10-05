@@ -1,27 +1,101 @@
+import math
 from copy import deepcopy
 
 from pydantic import ValidationError
 
-from app.schemas.explanation import ExplanationResponse, VerifiedEvidenceContext
+from app.schemas.explanation import (
+    ExplanationResponse,
+    VerifiedEvidenceContext,
+)
 from app.services.llm_client import generate_explanation
+
+
+def _canonicalize_number(value):
+    """
+    Remove meaningless floating-point representation noise while
+    preserving meaningful numeric precision.
+
+    Examples:
+        0.9999999999999999 -> 1.0
+        74.46800000000001 -> 74.468
+        1.4857e-07 -> 1.4857e-07
+
+    Integers and booleans are preserved unchanged.
+    """
+    if isinstance(value, bool):
+        return value
+
+    if isinstance(value, int):
+        return value
+
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            return value
+
+        return float(f"{value:.12g}")
+
+    return value
+
+
+def _canonicalize_evidence_numbers(value):
+    """
+    Recursively canonicalize numeric values inside verified evidence.
+
+    This transformation is applied only to the controlled LLM evidence
+    context. It does not modify the original deterministic analysis
+    result or InsightContract.
+    """
+    if isinstance(value, dict):
+        return {
+            key: _canonicalize_evidence_numbers(item)
+            for key, item in value.items()
+        }
+
+    if isinstance(value, list):
+        return [
+            _canonicalize_evidence_numbers(item)
+            for item in value
+        ]
+
+    if isinstance(value, tuple):
+        return [
+            _canonicalize_evidence_numbers(item)
+            for item in value
+        ]
+
+    return _canonicalize_number(value)
 
 
 def build_verified_evidence_context(insight):
     """Return the only fields that are permitted to cross the LLM boundary."""
     if insight.get("verification", {}).get("status") != "verified":
-        raise ValueError("Only verified insights can be explained.")
+        raise ValueError(
+            "Only verified insights can be explained."
+        )
 
     context = VerifiedEvidenceContext(
         insight_type=insight["insight_type"],
         title=insight.get("title", ""),
-        source_columns=deepcopy(insight.get("source_columns", [])),
+        source_columns=deepcopy(
+            insight.get("source_columns", [])
+        ),
         method=insight.get("method", ""),
-        evidence=deepcopy(insight.get("evidence", {})),
-        verification=deepcopy(insight.get("verification", {})),
-        limitations=deepcopy(insight.get("limitations", [])),
+        evidence=deepcopy(
+            insight.get("evidence", {})
+        ),
+        verification=deepcopy(
+            insight.get("verification", {})
+        ),
+        limitations=deepcopy(
+            insight.get("limitations", [])
+        ),
     )
 
-    return context.model_dump()
+    context_data = context.model_dump()
+
+    return _canonicalize_evidence_numbers(
+        context_data
+    )
 
 
 def build_explanation_prompt(verified_evidence):
@@ -37,11 +111,16 @@ def build_explanation_prompt(verified_evidence):
             "must say 82000, not 82. Do not make causal claims from correlation. "
             "Mention important limitations when relevant."
         ),
-        "verified_evidence": deepcopy(verified_evidence),
+        "verified_evidence": deepcopy(
+            verified_evidence
+        ),
     }
 
 
-def validate_explanation(explanation, insight):
+def validate_explanation(
+    explanation,
+    insight,
+):
     from app.services.numeric_guardrail import (
         validate_explanation_numbers,
     )
@@ -52,21 +131,32 @@ def validate_explanation(explanation, insight):
     )
 
 
-def explain_insight(insight, llm_function=None):
+def explain_insight(
+    insight,
+    llm_function=None,
+):
     try:
-        verified_evidence = build_verified_evidence_context(insight)
+        verified_evidence = (
+            build_verified_evidence_context(
+                insight
+            )
+        )
     except ValueError:
         return {
             "status": "rejected",
             "explanation": None,
             "validation": {
                 "valid": False,
-                "reason": "insight_not_verified",
+                "reason": (
+                    "insight_not_verified"
+                ),
                 "unsupported_numbers": [],
             },
         }
 
-    prompt = build_explanation_prompt(verified_evidence)
+    prompt = build_explanation_prompt(
+        verified_evidence
+    )
 
     try:
         response = generate_explanation(
@@ -85,7 +175,11 @@ def explain_insight(insight, llm_function=None):
         }
 
     try:
-        explanation = ExplanationResponse.model_validate(response)
+        explanation = (
+            ExplanationResponse.model_validate(
+                response
+            )
+        )
     except ValidationError:
         return {
             "status": "rejected",
@@ -108,7 +202,9 @@ def explain_insight(insight, llm_function=None):
             },
         }
 
-    explanation_data = explanation.model_dump()
+    explanation_data = (
+        explanation.model_dump()
+    )
 
     validation = validate_explanation(
         explanation_data,
@@ -130,21 +226,48 @@ def explain_insight(insight, llm_function=None):
 
 
 def mock_llm(prompt):
-    insight = prompt["verified_evidence"]
+    insight = prompt[
+        "verified_evidence"
+    ]
 
-    insight_type = insight.get("insight_type")
+    insight_type = insight.get(
+        "insight_type"
+    )
 
     if insight_type == "correlation":
-        evidence = insight.get("evidence", {})
-        verification = insight.get("verification", {})
+        evidence = insight.get(
+            "evidence",
+            {},
+        )
 
-        source_columns = insight.get("source_columns", [])
+        source_columns = insight.get(
+            "source_columns",
+            [],
+        )
 
-        column_a = source_columns[0] if len(source_columns) > 0 else "first variable"
-        column_b = source_columns[1] if len(source_columns) > 1 else "second variable"
-        correlation = evidence.get("correlation")
-        p_value = evidence.get("p_value")
-        sample_size = evidence.get("sample_size")
+        column_a = (
+            source_columns[0]
+            if len(source_columns) > 0
+            else "first variable"
+        )
+
+        column_b = (
+            source_columns[1]
+            if len(source_columns) > 1
+            else "second variable"
+        )
+
+        correlation = evidence.get(
+            "correlation"
+        )
+
+        p_value = evidence.get(
+            "p_value"
+        )
+
+        sample_size = evidence.get(
+            "sample_size"
+        )
 
         return {
             "text": (

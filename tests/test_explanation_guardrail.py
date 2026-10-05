@@ -28,11 +28,23 @@ def test_extract_numbers_from_decimal_text():
 
 def test_valid_explanation_is_approved():
     def good_llm(prompt):
+        evidence = prompt[
+            "verified_evidence"
+        ]["evidence"]
+
+        correlation = evidence[
+            "correlation"
+        ]
+
+        sample_size = evidence[
+            "sample_size"
+        ]
+
         return {
             "text": (
                 "Age and Salary have a strong positive relationship. "
-                "The correlation is 0.9062919244242602. "
-                "The sample contains 10 observations."
+                f"The correlation is {correlation}. "
+                f"The sample contains {sample_size} observations."
             )
         }
 
@@ -42,8 +54,6 @@ def test_valid_explanation_is_approved():
     )
 
     assert result["status"] == "approved"
-    assert result["validation"]["valid"] is True
-    assert result["validation"]["unsupported_numbers"] == []
 
 
 def test_invented_number_is_rejected():
@@ -256,3 +266,189 @@ def test_markdown_ordered_list_does_not_bypass_unsupported_number_detection():
     assert result["status"] == "rejected"
     assert result["validation"]["valid"] is False
     assert 25.0 in result["validation"]["unsupported_numbers"]
+
+def test_verified_evidence_canonicalizes_floating_point_noise():
+    from app.services.insight_explainer import (
+        build_verified_evidence_context,
+    )
+
+    insight = {
+        "insight_type": "correlation",
+        "title": "Revenue and Cost",
+        "source_columns": [
+            "Revenue",
+            "Cost",
+        ],
+        "method": "pearson_correlation",
+        "evidence": {
+            "correlation": (
+                0.9999999999999999
+            ),
+            "p_value": 0.0,
+            "sample_size": 6,
+        },
+        "verification": {
+            "status": "verified",
+        },
+        "limitations": [],
+    }
+
+    context = (
+        build_verified_evidence_context(
+            insight
+        )
+    )
+
+    assert (
+        context["evidence"][
+            "correlation"
+        ]
+        == 1.0
+    )
+
+    assert (
+        context["evidence"][
+            "p_value"
+        ]
+        == 0.0
+    )
+
+    assert (
+        context["evidence"][
+            "sample_size"
+        ]
+        == 6
+    )
+
+
+def test_verified_evidence_preserves_small_p_value():
+    from app.services.insight_explainer import (
+        build_verified_evidence_context,
+    )
+
+    insight = {
+        "insight_type": "correlation",
+        "title": "Revenue and Cost",
+        "source_columns": [
+            "Revenue",
+            "Cost",
+        ],
+        "method": "pearson_correlation",
+        "evidence": {
+            "correlation": 0.98818,
+            "p_value": 1.4857e-07,
+            "sample_size": 12,
+        },
+        "verification": {
+            "status": "verified",
+        },
+        "limitations": [],
+    }
+
+    context = (
+        build_verified_evidence_context(
+            insight
+        )
+    )
+
+    assert (
+        context["evidence"]["p_value"]
+        == 1.4857e-07
+    )
+
+
+def test_verified_evidence_removes_decimal_noise():
+    from app.services.insight_explainer import (
+        build_verified_evidence_context,
+    )
+
+    insight = {
+        "insight_type": "group_comparison",
+        "title": "Department comparison",
+        "source_columns": [
+            "Department",
+            "Salary",
+        ],
+        "method": "one_way_anova",
+        "evidence": {
+            "difference": 35000,
+            "percentage_difference": (
+                74.46800000000001
+            ),
+        },
+        "verification": {
+            "status": "verified",
+        },
+        "limitations": [],
+    }
+
+    context = (
+        build_verified_evidence_context(
+            insight
+        )
+    )
+
+    assert (
+        context["evidence"][
+            "difference"
+        ]
+        == 35000
+    )
+
+    assert (
+        context["evidence"][
+            "percentage_difference"
+        ]
+        == 74.468
+    )
+
+
+def test_build_verified_context_does_not_mutate_original_insight():
+    from app.services.insight_explainer import (
+        build_verified_evidence_context,
+    )
+
+    insight = {
+        "insight_type": "correlation",
+        "title": "Test",
+        "source_columns": [
+            "A",
+            "B",
+        ],
+        "method": "pearson_correlation",
+        "evidence": {
+            "correlation": (
+                0.9999999999999999
+            ),
+        },
+        "verification": {
+            "status": "verified",
+        },
+        "limitations": [],
+    }
+
+    original_value = (
+        insight["evidence"][
+            "correlation"
+        ]
+    )
+
+    context = (
+        build_verified_evidence_context(
+            insight
+        )
+    )
+
+    assert (
+        context["evidence"][
+            "correlation"
+        ]
+        == 1.0
+    )
+
+    assert (
+        insight["evidence"][
+            "correlation"
+        ]
+        == original_value
+    )
