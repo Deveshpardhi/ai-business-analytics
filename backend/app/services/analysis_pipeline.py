@@ -1,6 +1,8 @@
 from uuid import UUID
 
-from app.services.insight_explainer import explain_insight
+from app.services.insight_explainer import (
+    explain_ranked_insights,
+)
 from app.services.recommendation_engine import (
     recommend_insight,
     mock_recommendation_llm,
@@ -177,19 +179,12 @@ def run_phase1_analysis(
             top_n=10,
         )
 
-        explained_insights = []
-
-        for insight in ranked_insights:
-            explanation = explain_insight(
-                insight,
+        explained_insights = (
+            explain_ranked_insights(
+                ranked_insights,
+                ai_limit=3,
             )
-
-            explained_insights.append(
-                {
-                    **insight,
-                    "explanation": explanation,
-                }
-            )
+        )
 
         recommended_insights = []
 

@@ -163,7 +163,13 @@ def explain_insight(
             prompt,
             llm_function,
         )
-    except Exception:
+    except Exception as exc:
+        print(
+            "[LLM ERROR]",
+            type(exc).__name__,
+            str(exc),
+        )
+
         return {
             "status": "unavailable",
             "explanation": None,
@@ -223,6 +229,394 @@ def explain_insight(
         "explanation": explanation_data,
         "validation": validation,
     }
+
+
+
+def _deterministic_explanation_text(
+    verified_evidence,
+):
+    """
+    Build a human-readable explanation only from
+    the already verified evidence boundary.
+
+    This function performs no new analytics and
+    makes no external API call.
+    """
+    insight_type = verified_evidence.get(
+        "insight_type"
+    )
+
+    evidence = verified_evidence.get(
+        "evidence",
+        {},
+    )
+
+    source_columns = verified_evidence.get(
+        "source_columns",
+        [],
+    )
+
+    limitations = verified_evidence.get(
+        "limitations",
+        [],
+    )
+
+    parts = []
+
+    if insight_type == "time_series_trend":
+        measure = (
+            source_columns[0]
+            if source_columns
+            else "The measure"
+        )
+
+        direction = evidence.get(
+            "trend_direction"
+        )
+
+        strength = evidence.get(
+            "trend_strength"
+        )
+
+        if direction:
+            if strength:
+                parts.append(
+                    f"{measure} has a verified "
+                    f"{strength} {direction} "
+                    "historical trend."
+                )
+            else:
+                parts.append(
+                    f"{measure} has a verified "
+                    f"{direction} historical trend."
+                )
+
+        first_date = evidence.get(
+            "first_date"
+        )
+        first_value = evidence.get(
+            "first_value"
+        )
+        last_date = evidence.get(
+            "last_date"
+        )
+        last_value = evidence.get(
+            "last_value"
+        )
+
+        if (
+            first_date is not None
+            and first_value is not None
+            and last_date is not None
+            and last_value is not None
+        ):
+            parts.append(
+                f"The verified series moves from "
+                f"{first_value} on {first_date} "
+                f"to {last_value} on {last_date}."
+            )
+
+        percentage_change = evidence.get(
+            "percentage_change"
+        )
+
+        if percentage_change is not None:
+            parts.append(
+                "The verified overall percentage "
+                f"change is {percentage_change}%."
+            )
+
+        r_squared = evidence.get(
+            "r_squared"
+        )
+
+        if r_squared is not None:
+            parts.append(
+                "The verified R-squared value is "
+                f"{r_squared}."
+            )
+
+    elif insight_type == "correlation":
+        first_column = (
+            source_columns[0]
+            if len(source_columns) > 0
+            else "the first variable"
+        )
+
+        second_column = (
+            source_columns[1]
+            if len(source_columns) > 1
+            else "the second variable"
+        )
+
+        correlation = evidence.get(
+            "correlation"
+        )
+
+        sample_size = evidence.get(
+            "sample_size"
+        )
+
+        p_value = evidence.get(
+            "p_value"
+        )
+
+        if correlation is not None:
+            parts.append(
+                "The verified correlation between "
+                f"{first_column} and "
+                f"{second_column} is "
+                f"{correlation}."
+            )
+
+        if sample_size is not None:
+            parts.append(
+                "The relationship is based on "
+                f"{sample_size} observations."
+            )
+
+        if p_value is not None:
+            parts.append(
+                "The verified p-value is "
+                f"{p_value}."
+            )
+
+        parts.append(
+            "This relationship is an association "
+            "and does not establish causation."
+        )
+
+    elif insight_type == "group_difference":
+        highest_group = evidence.get(
+            "highest_group"
+        )
+
+        highest_value = evidence.get(
+            "highest_value"
+        )
+
+        lowest_group = evidence.get(
+            "lowest_group"
+        )
+
+        lowest_value = evidence.get(
+            "lowest_value"
+        )
+
+        absolute_difference = evidence.get(
+            "absolute_difference"
+        )
+
+        percentage_difference = evidence.get(
+            "percentage_difference"
+        )
+
+        if (
+            highest_group is not None
+            and highest_value is not None
+        ):
+            parts.append(
+                f"{highest_group} has a verified "
+                f"average value of {highest_value}."
+            )
+
+        if (
+            lowest_group is not None
+            and lowest_value is not None
+        ):
+            parts.append(
+                f"{lowest_group} has a verified "
+                f"average value of {lowest_value}."
+            )
+
+        if absolute_difference is not None:
+            parts.append(
+                "The verified absolute difference "
+                f"is {absolute_difference}."
+            )
+
+        if percentage_difference is not None:
+            parts.append(
+                "The verified percentage difference "
+                f"is {percentage_difference}%."
+            )
+
+        parts.append(
+            "A difference between groups does not "
+            "by itself establish causation."
+        )
+
+    elif insight_type == "outlier":
+        measure = (
+            source_columns[0]
+            if source_columns
+            else "The measure"
+        )
+
+        outlier_count = evidence.get(
+            "outlier_count"
+        )
+
+        lower_bound = evidence.get(
+            "lower_bound"
+        )
+
+        upper_bound = evidence.get(
+            "upper_bound"
+        )
+
+        if outlier_count is not None:
+            parts.append(
+                f"{measure} contains "
+                f"{outlier_count} verified "
+                "IQR outlier observations."
+            )
+
+        if (
+            lower_bound is not None
+            and upper_bound is not None
+        ):
+            parts.append(
+                "The verified IQR bounds are "
+                f"{lower_bound} to "
+                f"{upper_bound}."
+            )
+
+        parts.append(
+            "An outlier is not automatically a "
+            "data error and should be reviewed "
+            "in business context."
+        )
+
+    else:
+        title = verified_evidence.get(
+            "title",
+            "This insight",
+        )
+
+        parts.append(
+            f"{title}. This insight passed "
+            "deterministic verification."
+        )
+
+    if limitations:
+        parts.append(
+            "Limitation: "
+            + str(limitations[0])
+        )
+
+    return " ".join(parts)
+
+
+def build_deterministic_explanation(
+    insight,
+):
+    """
+    Produce a guarded local explanation without
+    contacting Gemini or any external provider.
+    """
+    try:
+        verified_evidence = (
+            build_verified_evidence_context(
+                insight
+            )
+        )
+    except ValueError:
+        return {
+            "status": "rejected",
+            "explanation": None,
+            "validation": {
+                "valid": False,
+                "reason": (
+                    "insight_not_verified"
+                ),
+                "unsupported_numbers": [],
+            },
+        }
+
+    explanation_data = {
+        "text": (
+            _deterministic_explanation_text(
+                verified_evidence
+            )
+        )
+    }
+
+    validation = validate_explanation(
+        explanation_data,
+        verified_evidence,
+    )
+
+    if not validation["valid"]:
+        return {
+            "status": "rejected",
+            "explanation": None,
+            "validation": validation,
+        }
+
+    return {
+        "status": "approved",
+        "explanation": explanation_data,
+        "validation": validation,
+        "source": "deterministic",
+    }
+
+
+def explain_ranked_insights(
+    ranked_insights,
+    ai_limit=3,
+):
+    """
+    Limit external LLM usage while keeping every
+    ranked verified insight explainable.
+
+    Ranks within ai_limit receive one LLM attempt.
+    Any failed/rejected LLM result falls back to
+    the deterministic explanation.
+
+    Remaining ranks never contact the LLM.
+    """
+    explained_insights = []
+
+    for rank, insight in enumerate(
+        ranked_insights,
+        start=1,
+    ):
+        if rank <= ai_limit:
+            explanation = explain_insight(
+                insight
+            )
+
+            if (
+                explanation.get("status")
+                != "approved"
+            ):
+                explanation = (
+                    build_deterministic_explanation(
+                        insight
+                    )
+                )
+            else:
+                explanation = {
+                    **explanation,
+                    "source": "llm",
+                }
+
+        else:
+            explanation = (
+                build_deterministic_explanation(
+                    insight
+                )
+            )
+
+        explained_insights.append(
+            {
+                **insight,
+                "explanation": explanation,
+            }
+        )
+
+    return explained_insights
 
 
 def mock_llm(prompt):
