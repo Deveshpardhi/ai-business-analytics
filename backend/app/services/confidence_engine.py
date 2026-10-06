@@ -63,6 +63,15 @@ def calculate_confidence(insight: dict) -> dict:
 
     if insight_type == "outlier":
         return calculate_outlier_confidence(insight)
+    
+    if (
+        insight_type== "time_series_trend"
+    ):
+        return (
+            calculate_time_series_confidence(
+                insight
+            )
+        )
 
     return {
         "level": "low",
@@ -208,6 +217,120 @@ def calculate_outlier_confidence(insight: dict) -> dict:
         ),
     }
 
+def calculate_time_series_confidence(
+    insight: dict,
+) -> dict:
+    evidence = insight.get(
+        "evidence",
+        {},
+    )
+
+    verification = insight.get(
+        "verification",
+        {},
+    )
+
+    sample_size = (
+        verification.get(
+            "sample_size",
+            evidence.get(
+                "sample_size"
+            ),
+        )
+    )
+
+    r_squared = evidence.get(
+        "r_squared",
+        0.0,
+    )
+
+    percentage_change = (
+        evidence.get(
+            "percentage_change"
+        )
+    )
+
+    direction = evidence.get(
+        "trend_direction"
+    )
+
+    trend_fit_score = clamp(
+        float(
+            r_squared or 0.0
+        )
+    )
+
+    if direction == "flat":
+        trend_fit_score = max(
+            trend_fit_score,
+            0.5,
+        )
+
+    if percentage_change is None:
+        magnitude_score = 0.0
+    else:
+        magnitude_score = clamp(
+            abs(
+                percentage_change
+            )
+            / 25
+        )
+
+    sample_score = (
+        sample_size_score(
+            sample_size
+        )
+    )
+
+    verification_score = (
+        1.0
+        if verification.get(
+            "status"
+        )
+        == "verified"
+        else 0.0
+    )
+
+    score = (
+        trend_fit_score * 0.30
+        + magnitude_score * 0.30
+        + sample_score * 0.20
+        + verification_score * 0.20
+    )
+
+    score = round(
+        clamp(score),
+        4,
+    )
+
+    return {
+        "level": (
+            confidence_level(
+                score
+            )
+        ),
+        "score": score,
+        "factors": {
+            "trend_fit": round(
+                trend_fit_score,
+                4,
+            ),
+            "change_magnitude": round(
+                magnitude_score,
+                4,
+            ),
+            "sample_size": round(
+                sample_score,
+                4,
+            ),
+            "verification": round(
+                verification_score,
+                4,
+            ),
+        },
+        "sample_size": sample_size,
+        "r_squared": r_squared,
+    }
 
 def confidence_level(score: float) -> str:
     if score >= 0.80:

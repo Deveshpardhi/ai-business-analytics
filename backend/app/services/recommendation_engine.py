@@ -78,6 +78,50 @@ def mock_recommendation_llm(prompt):
             "priority": "medium",
         }
 
+    if (insight_type== "time_series_trend"):
+        evidence = insight.get(
+            "evidence",
+            {},
+        )
+
+        source_columns = (
+            insight.get(
+                "source_columns",
+                [],
+            )
+        )
+
+        measure = (
+            source_columns[0]
+            if source_columns
+            else "the measure"
+        )
+
+        direction = evidence.get(
+            "trend_direction",
+            "observed",
+        )
+
+        return {
+            "action": (
+                f"Monitor {measure} and "
+                f"investigate the business "
+                f"drivers behind the "
+                f"{direction} historical trend "
+                f"before making forecasts or "
+                f"operational changes."
+            ),
+            "reason": (
+                "The trend was calculated "
+                "and verified from historical "
+                "observations, but historical "
+                "movement alone does not "
+                "establish future performance "
+                "or causation."
+            ),
+            "priority": "medium",
+        }
+
     return {
         "action": "Review this insight and determine whether further investigation is required.",
         "reason": "The insight passed the available deterministic analysis checks.",

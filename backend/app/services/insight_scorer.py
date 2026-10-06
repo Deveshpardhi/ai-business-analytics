@@ -10,6 +10,13 @@ def score_insight(insight: dict) -> dict:
     if insight_type == "outlier":
         return score_outlier(insight)
 
+    if (insight_type== "time_series_trend"):
+        return (
+            score_time_series_trend(
+                insight
+            )
+        )
+
     return {
         **insight,
         "score": 0.0,
@@ -162,6 +169,106 @@ def score_correlation(insight: dict) -> dict:
         },
     }
 
+def score_time_series_trend(
+    insight: dict,
+) -> dict:
+    evidence = insight[
+        "evidence"
+    ]
+
+    percentage_change = (
+        evidence.get(
+            "percentage_change"
+        )
+    )
+
+    r_squared = evidence.get(
+        "r_squared",
+        0.0,
+    )
+
+    magnitude_score = (
+        0.0
+        if percentage_change is None
+        else min(
+            abs(
+                percentage_change
+            )
+            / 100,
+            1.0,
+        )
+    )
+
+    trend_score = min(
+        max(
+            float(
+                r_squared or 0.0
+            ),
+            0.0,
+        ),
+        1.0,
+    )
+
+    verification_score = (
+        get_verification_score(
+            insight
+        )
+    )
+
+    confidence_score = (
+        get_confidence_score(
+            insight
+        )
+    )
+
+    business_impact_score = (
+        magnitude_score
+    )
+
+    novelty_score = 0.5
+
+    score = (
+        magnitude_score * 0.25
+        + trend_score * 0.20
+        + business_impact_score * 0.15
+        + verification_score * 0.15
+        + confidence_score * 0.20
+        + novelty_score * 0.05
+    )
+
+    return {
+        **insight,
+        "score": round(
+            score,
+            4,
+        ),
+        "score_components": {
+            "magnitude": round(
+                magnitude_score,
+                4,
+            ),
+            "trend_fit": round(
+                trend_score,
+                4,
+            ),
+            "business_impact": round(
+                business_impact_score,
+                4,
+            ),
+            "verification": round(
+                verification_score,
+                4,
+            ),
+            "confidence": round(
+                confidence_score,
+                4,
+            ),
+            "novelty": round(
+                novelty_score,
+                4,
+            ),
+        },
+    }
 
 def score_outlier(insight: dict) -> dict:
     evidence = insight["evidence"]

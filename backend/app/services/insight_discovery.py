@@ -1,5 +1,7 @@
 from app.schemas.insight import InsightContract
-
+from app.services.time_series_metrics import (
+    calculate_time_series_metrics,
+)
 
 def validate_insight(insight: dict) -> dict:
     validated = InsightContract(**insight)
@@ -23,6 +25,20 @@ def discover_insights(analysis_results: list[dict]) -> list[dict]:
 
             if insight:
                 insights.append(validate_insight(insight))
+
+        elif analysis_type == "time_series":
+            insight = (
+                discover_time_series_insight(
+                    result
+                )
+            )
+
+            if insight:
+                insights.append(
+                    validate_insight(
+                        insight
+                    )
+                )
 
         elif analysis_type == "descriptive_statistics":
             insight = discover_outlier_insight(result)
@@ -193,6 +209,201 @@ def discover_group_insights(result: dict) -> list[dict]:
         ],
     }]
 
+def discover_time_series_insight(
+    result: dict,
+) -> dict | None:
+    measure = result.get(
+        "measure"
+    )
+
+    date_column = result.get(
+        "date"
+    )
+
+    data = result.get(
+        "data",
+        [],
+    )
+
+    if (
+        not measure
+        or not date_column
+        or not data
+    ):
+        return None
+
+    metrics = (
+        calculate_time_series_metrics(
+            data,
+            measure,
+            date_column,
+        )
+    )
+
+    if (
+        metrics.get("status")
+        != "completed"
+    ):
+        return None
+
+    direction = metrics[
+        "trend_direction"
+    ]
+
+    title_direction = (
+        "stable"
+        if direction == "flat"
+        else direction
+    )
+
+    evidence = {
+        "trend_direction": (
+            direction
+        ),
+        "trend_strength": (
+            metrics[
+                "trend_strength"
+            ]
+        ),
+        "first_date": (
+            metrics[
+                "first_date"
+            ]
+        ),
+        "first_value": (
+            metrics[
+                "first_value"
+            ]
+        ),
+        "last_date": (
+            metrics[
+                "last_date"
+            ]
+        ),
+        "last_value": (
+            metrics[
+                "last_value"
+            ]
+        ),
+        "absolute_change": (
+            metrics[
+                "absolute_change"
+            ]
+        ),
+        "percentage_change": (
+            metrics[
+                "percentage_change"
+            ]
+        ),
+        "latest_period_change": (
+            metrics[
+                "latest_period_change"
+            ]
+        ),
+        "latest_period_percentage_change": (
+            metrics[
+                "latest_period_percentage_change"
+            ]
+        ),
+        "peak_date": (
+            metrics[
+                "peak_date"
+            ]
+        ),
+        "peak_value": (
+            metrics[
+                "peak_value"
+            ]
+        ),
+        "trough_date": (
+            metrics[
+                "trough_date"
+            ]
+        ),
+        "trough_value": (
+            metrics[
+                "trough_value"
+            ]
+        ),
+        "sample_size": (
+            metrics[
+                "sample_size"
+            ]
+        ),
+        "r_squared": (
+            metrics[
+                "r_squared"
+            ]
+        ),
+        "moving_average_window": (
+            metrics[
+                "moving_average_window"
+            ]
+        ),
+        "latest_moving_average": (
+            metrics[
+                "latest_moving_average"
+            ]
+        ),
+    }
+
+    return {
+        "insight_type": (
+            "time_series_trend"
+        ),
+        "title": (
+            f"{measure} shows a "
+            f"{title_direction} trend "
+            f"over {date_column}"
+        ),
+        "evidence": evidence,
+        "calculation": {
+            "method": (
+                "linear trend over "
+                "chronologically sorted "
+                "observations"
+            ),
+            "slope_per_observation": (
+                metrics[
+                    "slope_per_observation"
+                ]
+            ),
+            "r_squared": (
+                metrics[
+                    "r_squared"
+                ]
+            ),
+        },
+        "confidence": {
+            "level": (
+                "pending_verification"
+            ),
+        },
+        "source_columns": [
+            measure,
+            date_column,
+        ],
+        "method": (
+            "deterministic_time_series_trend"
+        ),
+        "limitations": [
+            (
+                "Historical trend direction "
+                "does not forecast future "
+                "performance."
+            ),
+            (
+                "Trend regression uses "
+                "chronological observation "
+                "order and does not model "
+                "unequal time intervals."
+            ),
+            (
+                "Short time series can make "
+                "trend estimates less reliable."
+            ),
+        ],
+    }
 
 def discover_correlation_insight(result: dict) -> dict | None:
     correlation = result.get("correlation")

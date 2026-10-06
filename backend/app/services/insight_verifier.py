@@ -1,6 +1,9 @@
 from math import isclose
 
 from app.schemas.insight import InsightContract
+from app.services.time_series_metrics import (
+    calculate_time_series_metrics,
+)
 
 
 NUMERIC_TOLERANCE = 1e-6
@@ -42,6 +45,14 @@ def verify_insight(insight: dict, analysis_result: dict) -> dict:
     if insight_type == "group_difference":
         return validate_insight(
             verify_group_difference(insight, analysis_result)
+        )
+
+    if insight_type == "time_series_trend":
+        return validate_insight(
+            verify_time_series_trend(
+                insight,
+                analysis_result,
+            )
         )
 
     if insight_type == "outlier":
@@ -442,6 +453,141 @@ def verify_group_difference(
     }
 
 
+def verify_time_series_trend(
+    insight: dict,
+    analysis_result: dict,
+) -> dict:
+    evidence = insight.get(
+        "evidence",
+        {},
+    )
+
+    measure = analysis_result.get(
+        "measure"
+    )
+
+    date_column = analysis_result.get(
+        "date"
+    )
+
+    data = analysis_result.get(
+        "data",
+        [],
+    )
+
+    metrics = calculate_time_series_metrics(
+        data,
+        measure,
+        date_column,
+    )
+
+    if (
+        metrics.get("status")
+        != "completed"
+    ):
+        return {
+            **insight,
+            "verification": {
+                "status": "insufficient_data",
+                "reason": metrics.get(
+                    "reason",
+                    "Insufficient time-series data.",
+                ),
+                "sample_size": metrics.get(
+                    "sample_size",
+                    0,
+                ),
+            },
+        }
+
+    numeric_fields = [
+        "first_value",
+        "last_value",
+        "absolute_change",
+        "percentage_change",
+        "latest_period_change",
+        "latest_period_percentage_change",
+        "peak_value",
+        "trough_value",
+        "sample_size",
+        "r_squared",
+        "moving_average_window",
+        "latest_moving_average",
+    ]
+
+    text_fields = [
+        "trend_direction",
+        "trend_strength",
+        "first_date",
+        "last_date",
+        "peak_date",
+        "trough_date",
+    ]
+
+    mismatches = []
+
+    for field in numeric_fields:
+        claimed = evidence.get(field)
+        actual = metrics.get(field)
+
+        if not _numbers_match(
+            claimed,
+            actual,
+        ):
+            mismatches.append(
+                {
+                    "field": field,
+                    "claimed": claimed,
+                    "actual": actual,
+                }
+            )
+
+    for field in text_fields:
+        claimed = evidence.get(field)
+        actual = metrics.get(field)
+
+        if claimed != actual:
+            mismatches.append(
+                {
+                    "field": field,
+                    "claimed": claimed,
+                    "actual": actual,
+                }
+            )
+
+    if mismatches:
+        return {
+            **insight,
+            "verification": {
+                "status": "failed",
+                "reason": (
+                    "Time-series evidence does not match "
+                    "the deterministic analysis."
+                ),
+                "mismatches": mismatches,
+            },
+        }
+
+    return {
+        **insight,
+        "verification": {
+            "status": "verified",
+            "method": (
+                "deterministic_time_series_recalculation"
+            ),
+            "sample_size": metrics[
+                "sample_size"
+            ],
+            "trend_direction": metrics[
+                "trend_direction"
+            ],
+            "r_squared": metrics[
+                "r_squared"
+            ],
+        },
+    }
+
+
 def verify_outlier_insight(
     insight: dict,
     analysis_results: list[dict],
@@ -560,6 +706,27 @@ def verify_insights(
 
                 if result.get("columns") == insight.get(
                     "source_columns"
+                ):
+                    matching_result = result
+                    break
+
+            elif insight_type == "time_series_trend":
+                if result_type != "time_series":
+                    continue
+
+                source_columns = insight.get(
+                    "source_columns",
+                    [],
+                )
+
+                if len(source_columns) < 2:
+                    continue
+
+                if (
+                    result.get("measure")
+                    == source_columns[0]
+                    and result.get("date")
+                    == source_columns[1]
                 ):
                     matching_result = result
                     break
