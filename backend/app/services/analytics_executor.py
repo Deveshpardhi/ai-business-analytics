@@ -203,6 +203,56 @@ def time_series(df, measure, date):
         "method": "sorted_time_series",
     }
 
+def _build_scatter_visualization(
+    first,
+    second,
+    x,
+    y,
+    max_points=200,
+):
+    """
+    Build deterministic scatter-plot data from the same paired
+    observations used by Pearson correlation.
+
+    Large datasets are reduced deterministically so the API does
+    not send thousands of points to the browser.
+    """
+    total_points = len(x)
+
+    if total_points == 0:
+        indices = []
+    elif total_points <= max_points:
+        indices = list(range(total_points))
+    else:
+        indices = [
+            round(
+                index
+                * (total_points - 1)
+                / (max_points - 1)
+            )
+            for index in range(max_points)
+        ]
+
+    points = [
+        {
+            "x": x[index],
+            "y": y[index],
+        }
+        for index in indices
+    ]
+
+    return {
+        "type": "scatter",
+        "x_column": first,
+        "y_column": second,
+        "points": points,
+        "total_points": total_points,
+        "displayed_points": len(points),
+        "sampled": (
+            total_points > max_points
+        ),
+    }
+
 def correlation(df, first, second):
     pair = (
         df
@@ -255,4 +305,10 @@ def correlation(df, first, second):
         "sample_size": sample_size,
         "method": "pearson_correlation",
         "status": "completed",
+        "visualization": _build_scatter_visualization(
+            first,
+            second,
+            x,
+            y,
+        ),
     }

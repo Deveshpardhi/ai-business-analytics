@@ -431,6 +431,210 @@ function AnalysisRunHistory({
   );
 }
 
+function CorrelationScatterPlot({
+  visualization,
+}) {
+  const points =
+    visualization?.points ?? [];
+
+  if (!points.length) {
+    return null;
+  }
+
+  const width = 520;
+  const height = 250;
+
+  const padding = {
+    top: 18,
+    right: 18,
+    bottom: 46,
+    left: 54,
+  };
+
+  const xValues = points.map(
+    (point) => Number(point.x)
+  );
+
+  const yValues = points.map(
+    (point) => Number(point.y)
+  );
+
+  const xMin = Math.min(...xValues);
+  const xMax = Math.max(...xValues);
+  const yMin = Math.min(...yValues);
+  const yMax = Math.max(...yValues);
+
+  const plotWidth =
+    width -
+    padding.left -
+    padding.right;
+
+  const plotHeight =
+    height -
+    padding.top -
+    padding.bottom;
+
+  const scaleX = (value) =>
+    padding.left +
+    ((value - xMin) /
+      (xMax - xMin || 1)) *
+      plotWidth;
+
+  const scaleY = (value) =>
+    padding.top +
+    plotHeight -
+    ((value - yMin) /
+      (yMax - yMin || 1)) *
+      plotHeight;
+
+  return (
+    <div className="scatter-chart">
+      <div className="scatter-heading">
+        <div>
+          <strong>
+            Observed relationship
+          </strong>
+
+          <span>
+            {visualization.x_column}
+            {" vs "}
+            {visualization.y_column}
+          </span>
+        </div>
+
+        <small>
+          {visualization.displayed_points}
+          {" of "}
+          {visualization.total_points}
+          {" observations"}
+        </small>
+      </div>
+
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        role="img"
+        aria-label={
+          `${visualization.x_column} versus ` +
+          `${visualization.y_column} scatter plot`
+        }
+      >
+        <line
+          className="scatter-axis"
+          x1={padding.left}
+          y1={padding.top + plotHeight}
+          x2={padding.left + plotWidth}
+          y2={padding.top + plotHeight}
+        />
+
+        <line
+          className="scatter-axis"
+          x1={padding.left}
+          y1={padding.top}
+          x2={padding.left}
+          y2={padding.top + plotHeight}
+        />
+
+        <text
+          className="scatter-tick"
+          x={padding.left}
+          y={height - 24}
+        >
+          {formatValue(xMin)}
+        </text>
+
+        <text
+          className="scatter-tick"
+          x={padding.left + plotWidth}
+          y={height - 24}
+          textAnchor="end"
+        >
+          {formatValue(xMax)}
+        </text>
+
+        <text
+          className="scatter-tick"
+          x={padding.left - 8}
+          y={padding.top + 4}
+          textAnchor="end"
+        >
+          {formatValue(yMax)}
+        </text>
+
+        <text
+          className="scatter-tick"
+          x={padding.left - 8}
+          y={padding.top + plotHeight}
+          textAnchor="end"
+        >
+          {formatValue(yMin)}
+        </text>
+
+        {points.map(
+          (point, index) => (
+            <circle
+              className="scatter-point"
+              key={`${point.x}-${point.y}-${index}`}
+              cx={scaleX(
+                Number(point.x)
+              )}
+              cy={scaleY(
+                Number(point.y)
+              )}
+              r="4"
+            >
+              <title>
+                {visualization.x_column}
+                {": "}
+                {formatValue(point.x)}
+                {" · "}
+                {visualization.y_column}
+                {": "}
+                {formatValue(point.y)}
+              </title>
+            </circle>
+          )
+        )}
+
+        <text
+          className="scatter-axis-label"
+          x={
+            padding.left +
+            plotWidth / 2
+          }
+          y={height - 5}
+          textAnchor="middle"
+        >
+          {visualization.x_column}
+        </text>
+
+        <text
+          className="scatter-axis-label"
+          transform={
+            `translate(14 ${
+              padding.top +
+              plotHeight / 2
+            }) rotate(-90)`
+          }
+          textAnchor="middle"
+        >
+          {visualization.y_column}
+        </text>
+      </svg>
+
+      {visualization.sampled && (
+        <p className="scatter-note">
+          Display limited to a deterministic
+          sample of{" "}
+          {visualization.displayed_points}{" "}
+          points from{" "}
+          {visualization.total_points}{" "}
+          observations.
+        </p>
+      )}
+    </div>
+  );
+}
+
 
 function EvidenceVisual({
   insight,
@@ -448,6 +652,9 @@ function EvidenceVisual({
         evidence.correlation
       ) * 100
     );
+    const visualization =
+      insight.calculation
+        ?.visualization;
 
     return (
       <div className="evidence-visual">
@@ -471,6 +678,12 @@ function EvidenceVisual({
             }}
           />
         </div>
+
+        <CorrelationScatterPlot
+          visualization={
+            visualization
+          }
+        />
       </div>
     );
   }

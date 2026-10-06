@@ -139,8 +139,13 @@ def discover_correlation_insight(result: dict) -> dict | None:
         ),
         "evidence": evidence,
         "calculation": {
-            "formula": "Pearson correlation coefficient",
+            "formula": (
+                "Pearson correlation coefficient"
+            ),
             "value": correlation,
+            "visualization": result.get(
+                "visualization"
+            ),
         },
         "confidence": {
             "level": (

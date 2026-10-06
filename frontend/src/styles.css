@@ -828,6 +828,89 @@ button {
 
 
 /* ----------------------------------
+   CORRELATION SCATTER
+---------------------------------- */
+
+.scatter-chart {
+  margin-top: 20px;
+  padding: 16px;
+  border:
+    1px solid
+    rgba(202, 221, 211, .1);
+  border-radius: 10px;
+  background:
+    rgba(11, 29, 27, .56);
+}
+
+.scatter-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.scatter-heading div {
+  display: grid;
+  gap: 3px;
+}
+
+.scatter-heading strong {
+  color: #e8f2e7;
+  font-size: .82rem;
+}
+
+.scatter-heading span,
+.scatter-heading small {
+  color: #8fa79e;
+  font-size: .7rem;
+}
+
+.scatter-chart svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.scatter-axis {
+  stroke:
+    rgba(195, 216, 206, .3);
+  stroke-width: 1;
+}
+
+.scatter-point {
+  fill: #b8dc94;
+  opacity: .8;
+}
+
+.scatter-point:hover {
+  opacity: 1;
+  r: 5;
+}
+
+.scatter-tick,
+.scatter-axis-label {
+  fill: #8fa79e;
+  font-family:
+    "DM Mono",
+    monospace;
+  font-size: 9px;
+}
+
+.scatter-axis-label {
+  fill: #b7c8c1;
+}
+
+.scatter-note {
+  margin: 9px 0 0;
+  color: #819990;
+  font-size: .68rem;
+  line-height: 1.45;
+}
+
+
+/* ----------------------------------
    RESPONSIVE
 ---------------------------------- */
 
