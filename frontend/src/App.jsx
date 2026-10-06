@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from "react";
 
 import {
   analyzeDataset,
+  loadAnalysisRun,
   loadAnalysisRuns,
   loadDatasetOverview,
   loadDatasetPlan,
@@ -417,15 +418,476 @@ function PlanSummary({
 }
 
 
+function getRunInsightKey(
+  insight
+) {
+  return [
+    insight?.insight_type ?? "",
+    insight?.method ?? "",
+    ...(insight?.source_columns ?? []),
+  ].join("::");
+}
+
+
+function getRunConfidenceCounts(
+  insights
+) {
+  return insights.reduce(
+    (counts, insight) => {
+      const level =
+        insight?.confidence
+          ?.level?.toLowerCase();
+
+      if (
+        level === "high" ||
+        level === "medium" ||
+        level === "low"
+      ) {
+        counts[level] += 1;
+      }
+
+      return counts;
+    },
+    {
+      high: 0,
+      medium: 0,
+      low: 0,
+    }
+  );
+}
+
+
+function summarizePersistedRun(
+  run
+) {
+  const insights =
+    run?.ranked_insights ?? [];
+
+  return {
+    verifiedSignals:
+      insights.length,
+    confidence:
+      getRunConfidenceCounts(
+        insights
+      ),
+    topInsight:
+      insights[0] ?? null,
+  };
+}
+
+
+function comparePersistedRuns(
+  firstRun,
+  secondRun
+) {
+  const ordered = [
+    firstRun,
+    secondRun,
+  ].sort(
+    (left, right) => {
+      const leftTime =
+        new Date(
+          left?.created_at ?? 0
+        ).getTime();
+
+      const rightTime =
+        new Date(
+          right?.created_at ?? 0
+        ).getTime();
+
+      if (leftTime !== rightTime) {
+        return leftTime - rightTime;
+      }
+
+      return String(
+        left?.id ?? ""
+      ).localeCompare(
+        String(
+          right?.id ?? ""
+        )
+      );
+    }
+  );
+
+  const baseline = ordered[0];
+  const current = ordered[1];
+
+  const baselineInsights =
+    baseline?.ranked_insights ?? [];
+
+  const currentInsights =
+    current?.ranked_insights ?? [];
+
+  const baselineMap =
+    new Map(
+      baselineInsights.map(
+        (insight) => [
+          getRunInsightKey(
+            insight
+          ),
+          insight,
+        ]
+      )
+    );
+
+  const currentMap =
+    new Map(
+      currentInsights.map(
+        (insight) => [
+          getRunInsightKey(
+            insight
+          ),
+          insight,
+        ]
+      )
+    );
+
+  const added = [];
+  const removed = [];
+  const changed = [];
+
+  currentMap.forEach(
+    (insight, key) => {
+      if (
+        !baselineMap.has(key)
+      ) {
+        added.push(insight);
+        return;
+      }
+
+      const previous =
+        baselineMap.get(key);
+
+      const previousScore =
+        typeof previous?.score ===
+          "number"
+          ? previous.score
+          : null;
+
+      const currentScore =
+        typeof insight?.score ===
+          "number"
+          ? insight.score
+          : null;
+
+      const previousConfidence =
+        previous?.confidence
+          ?.score;
+
+      const currentConfidence =
+        insight?.confidence
+          ?.score;
+
+      const scoreChanged =
+        previousScore !== null &&
+        currentScore !== null &&
+        Math.abs(
+          currentScore -
+          previousScore
+        ) > 1e-9;
+
+      const confidenceChanged =
+        typeof previousConfidence ===
+          "number" &&
+        typeof currentConfidence ===
+          "number" &&
+        Math.abs(
+          currentConfidence -
+          previousConfidence
+        ) > 1e-9;
+
+      const levelChanged =
+        previous?.confidence
+          ?.level !==
+        insight?.confidence
+          ?.level;
+
+      const titleChanged =
+        previous?.title !==
+        insight?.title;
+
+      if (
+        scoreChanged ||
+        confidenceChanged ||
+        levelChanged ||
+        titleChanged
+      ) {
+        changed.push({
+          before: previous,
+          after: insight,
+          scoreDelta:
+            previousScore !== null &&
+            currentScore !== null
+              ? currentScore -
+                previousScore
+              : null,
+          confidenceDelta:
+            typeof previousConfidence ===
+              "number" &&
+            typeof currentConfidence ===
+              "number"
+              ? currentConfidence -
+                previousConfidence
+              : null,
+        });
+      }
+    }
+  );
+
+  baselineMap.forEach(
+    (insight, key) => {
+      if (
+        !currentMap.has(key)
+      ) {
+        removed.push(insight);
+      }
+    }
+  );
+
+  return {
+    baseline,
+    current,
+    baselineSummary:
+      summarizePersistedRun(
+        baseline
+      ),
+    currentSummary:
+      summarizePersistedRun(
+        current
+      ),
+    added,
+    removed,
+    changed,
+  };
+}
+
+
+function RunChangeList({
+  title,
+  description,
+  items,
+  type,
+}) {
+  return (
+    <div className="run-change-panel">
+      <div className="run-change-heading">
+        <strong>
+          {title}
+        </strong>
+
+        <span>
+          {description}
+        </span>
+      </div>
+
+      {items.length ? (
+        <div className="run-change-items">
+          {items.map(
+            (
+              item,
+              index
+            ) => {
+              const insight =
+                type === "changed"
+                  ? item.after
+                  : item;
+
+              return (
+                <div
+                  className="run-change-item"
+                  key={
+                    `${getRunInsightKey(
+                      insight
+                    )}-${index}`
+                  }
+                >
+                  <strong>
+                    {insight.title}
+                  </strong>
+
+                  <span>
+                    {insight
+                      .confidence
+                      ?.level ??
+                      "Confidence unavailable"}
+
+                    {type ===
+                      "changed" &&
+                    typeof item
+                      .scoreDelta ===
+                      "number"
+                      ? (
+                        ` · score ${
+                          item.scoreDelta >
+                          0
+                            ? "+"
+                            : ""
+                        }${formatValue(
+                          item.scoreDelta
+                        )}`
+                      )
+                      : ""}
+                  </span>
+                </div>
+              );
+            }
+          )}
+        </div>
+      ) : (
+        <p className="run-change-empty">
+          None detected.
+        </p>
+      )}
+    </div>
+  );
+}
+
+
 function AnalysisRunHistory({
   history,
+  currentRunId,
 }) {
   const runs =
     history?.analysis_runs ?? [];
 
+  const [
+    selectedRunIds,
+    setSelectedRunIds,
+  ] = useState([]);
+
+  const [
+    comparison,
+    setComparison,
+  ] = useState(null);
+
+  const [
+    comparisonState,
+    setComparisonState,
+  ] = useState("idle");
+
+  const [
+    comparisonError,
+    setComparisonError,
+  ] = useState("");
+
+  const [
+    viewedRun,
+    setViewedRun,
+  ] = useState(null);
+
+  const [
+    viewState,
+    setViewState,
+  ] = useState("idle");
+
   if (!runs.length) {
     return null;
   }
+
+  function toggleRunSelection(
+    runId
+  ) {
+    setComparison(null);
+    setComparisonError("");
+
+    setSelectedRunIds(
+      (current) => {
+        if (
+          current.includes(runId)
+        ) {
+          return current.filter(
+            (id) => id !== runId
+          );
+        }
+
+        if (
+          current.length >= 2
+        ) {
+          return current;
+        }
+
+        return [
+          ...current,
+          runId,
+        ];
+      }
+    );
+  }
+
+  async function handleViewRun(
+    runId
+  ) {
+    setViewState("loading");
+
+    try {
+      const run =
+        await loadAnalysisRun(
+          runId
+        );
+
+      setViewedRun(run);
+      setViewState("ready");
+    } catch {
+      setViewedRun(null);
+      setViewState("failed");
+    }
+  }
+
+  async function handleCompareRuns() {
+    if (
+      selectedRunIds.length !== 2
+    ) {
+      return;
+    }
+
+    setComparisonState(
+      "loading"
+    );
+
+    setComparisonError("");
+
+    try {
+      const [
+        first,
+        second,
+      ] = await Promise.all(
+        selectedRunIds.map(
+          (runId) =>
+            loadAnalysisRun(
+              runId
+            )
+        )
+      );
+
+      setComparison(
+        comparePersistedRuns(
+          first,
+          second
+        )
+      );
+
+      setComparisonState(
+        "ready"
+      );
+    } catch {
+      setComparison(null);
+
+      setComparisonState(
+        "failed"
+      );
+
+      setComparisonError(
+        "The selected runs could not be loaded for comparison."
+      );
+    }
+  }
+
+  const viewedSummary =
+    viewedRun
+      ? summarizePersistedRun(
+          viewedRun
+        )
+      : null;
 
   return (
     <section className="card run-history">
@@ -438,54 +900,502 @@ function AnalysisRunHistory({
           <h2>
             Previous runs
           </h2>
+
+          <p>
+            Review persisted runs or
+            select any two from this
+            dataset version for a
+            deterministic comparison.
+          </p>
         </div>
 
         <StatusPill>
-          {history.count} total
+          {history.count ??
+            runs.length}
+          {" total"}
         </StatusPill>
       </div>
 
       <div className="run-list">
-        {runs.map((run) => (
-          <div
-            className="run-row"
-            key={run.id}
-          >
-            <div>
-              <strong>
-                {run.id}
-              </strong>
+        {runs.map((run) => {
+          const selected =
+            selectedRunIds.includes(
+              run.id
+            );
 
-              <small>
-                {run.created_at
+          const isCurrent =
+            run.id ===
+            currentRunId;
+
+          return (
+            <div
+              className={
+                `run-row` +
+                (
+                  selected
+                    ? " selected"
+                    : ""
+                )
+              }
+              key={run.id}
+            >
+              <button
+                className="run-view-button"
+                type="button"
+                onClick={() =>
+                  handleViewRun(
+                    run.id
+                  )
+                }
+              >
+                <div>
+                  <strong>
+                    {run.id}
+                  </strong>
+
+                  <small>
+                    {run.created_at
+                      ? new Date(
+                          run.created_at
+                        ).toLocaleString()
+                      : "Time unavailable"}
+                  </small>
+                </div>
+
+                {isCurrent && (
+                  <span className="run-current-label">
+                    Current
+                  </span>
+                )}
+              </button>
+
+              <div className="run-row-actions">
+                <StatusPill
+                  tone={
+                    run.status ===
+                    "completed"
+                      ? "success"
+                      : run.status ===
+                          "partially_completed"
+                        ? "warning"
+                        : "danger"
+                  }
+                >
+                  {run.status
+                    ?.replaceAll(
+                      "_",
+                      " "
+                    )}
+                </StatusPill>
+
+                <label
+                  className={
+                    `run-compare-choice` +
+                    (
+                      selected
+                        ? " selected"
+                        : ""
+                    )
+                  }
+                >
+                  <input
+                    type="checkbox"
+                    checked={
+                      selected
+                    }
+                    disabled={
+                      !selected &&
+                      selectedRunIds
+                        .length >= 2
+                    }
+                    onChange={() =>
+                      toggleRunSelection(
+                        run.id
+                      )
+                    }
+                  />
+
+                  Compare
+                </label>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="run-compare-toolbar">
+        <span>
+          {
+            selectedRunIds.length
+          }
+          {" of 2 runs selected"}
+        </span>
+
+        <div>
+          <button
+            className="secondary-button"
+            type="button"
+            disabled={
+              selectedRunIds.length !==
+                2 ||
+              comparisonState ===
+                "loading"
+            }
+            onClick={
+              handleCompareRuns
+            }
+          >
+            {comparisonState ===
+            "loading"
+              ? "Comparing…"
+              : "Compare selected runs"}
+          </button>
+
+          {selectedRunIds.length >
+            0 && (
+            <button
+              className="text-button"
+              type="button"
+              onClick={() => {
+                setSelectedRunIds(
+                  []
+                );
+
+                setComparison(
+                  null
+                );
+
+                setComparisonError(
+                  ""
+                );
+              }}
+            >
+              Clear
+            </button>
+          )}
+        </div>
+      </div>
+
+      {comparisonError && (
+        <p className="run-comparison-error">
+          {comparisonError}
+        </p>
+      )}
+
+      {viewState ===
+        "loading" && (
+        <p className="run-history-message">
+          Loading run snapshot…
+        </p>
+      )}
+
+      {viewState ===
+        "failed" && (
+        <p className="run-comparison-error">
+          The run snapshot could not
+          be loaded.
+        </p>
+      )}
+
+      {viewedRun &&
+        viewedSummary && (
+        <div className="run-snapshot">
+          <div className="run-snapshot-header">
+            <div>
+              <p className="eyebrow">
+                Run snapshot
+              </p>
+
+              <h3>
+                {
+                  viewedRun.id
+                }
+              </h3>
+
+              <span>
+                {viewedRun.created_at
                   ? new Date(
-                      run.created_at
+                      viewedRun.created_at
                     ).toLocaleString()
                   : "Time unavailable"}
-              </small>
+              </span>
             </div>
 
-            <StatusPill
-              tone={
-                run.status === "completed"
-                  ? "success"
-                  : run.status ===
-                      "partially_completed"
-                    ? "warning"
-                    : "danger"
+            <button
+              className="text-button"
+              type="button"
+              onClick={() =>
+                setViewedRun(
+                  null
+                )
               }
             >
-              {run.status?.replaceAll(
-                "_",
-                " "
-              )}
-            </StatusPill>
+              Close
+            </button>
           </div>
-        ))}
-      </div>
+
+          <div className="run-snapshot-stats">
+            <div>
+              <span>
+                Verified signals
+              </span>
+
+              <strong>
+                {
+                  viewedSummary
+                    .verifiedSignals
+                }
+              </strong>
+            </div>
+
+            <div>
+              <span>
+                High confidence
+              </span>
+
+              <strong>
+                {
+                  viewedSummary
+                    .confidence
+                    .high
+                }
+              </strong>
+            </div>
+
+            <div>
+              <span>
+                Medium confidence
+              </span>
+
+              <strong>
+                {
+                  viewedSummary
+                    .confidence
+                    .medium
+                }
+              </strong>
+            </div>
+          </div>
+
+          <div className="run-snapshot-top">
+            <span>
+              Top finding
+            </span>
+
+            <strong>
+              {viewedSummary
+                .topInsight
+                ?.title ??
+                "No ranked insight"}
+            </strong>
+          </div>
+        </div>
+      )}
+
+      {comparison && (
+        <div className="run-comparison">
+          <div className="run-comparison-header">
+            <div>
+              <p className="eyebrow">
+                Run comparison
+              </p>
+
+              <h3>
+                What changed?
+              </h3>
+
+              <p>
+                Comparing persisted
+                verified and ranked
+                analytical results.
+                No AI calculations are
+                introduced here.
+              </p>
+            </div>
+
+            <div className="run-comparison-dates">
+              <span>
+                Baseline
+              </span>
+
+              <strong>
+                {comparison
+                  .baseline
+                  .created_at
+                  ? new Date(
+                      comparison
+                        .baseline
+                        .created_at
+                    ).toLocaleString()
+                  : comparison
+                      .baseline.id}
+              </strong>
+
+              <span>
+                → Newer run
+              </span>
+
+              <strong>
+                {comparison
+                  .current
+                  .created_at
+                  ? new Date(
+                      comparison
+                        .current
+                        .created_at
+                    ).toLocaleString()
+                  : comparison
+                      .current.id}
+              </strong>
+            </div>
+          </div>
+
+          <div className="run-comparison-stats">
+            <div>
+              <span>
+                Verified signals
+              </span>
+
+              <strong>
+                {
+                  comparison
+                    .baselineSummary
+                    .verifiedSignals
+                }
+                {" → "}
+                {
+                  comparison
+                    .currentSummary
+                    .verifiedSignals
+                }
+              </strong>
+            </div>
+
+            <div>
+              <span>
+                High confidence
+              </span>
+
+              <strong>
+                {
+                  comparison
+                    .baselineSummary
+                    .confidence
+                    .high
+                }
+                {" → "}
+                {
+                  comparison
+                    .currentSummary
+                    .confidence
+                    .high
+                }
+              </strong>
+            </div>
+
+            <div>
+              <span>
+                New signals
+              </span>
+
+              <strong>
+                {
+                  comparison
+                    .added
+                    .length
+                }
+              </strong>
+            </div>
+
+            <div>
+              <span>
+                No longer detected
+              </span>
+
+              <strong>
+                {
+                  comparison
+                    .removed
+                    .length
+                }
+              </strong>
+            </div>
+
+            <div>
+              <span>
+                Changed signals
+              </span>
+
+              <strong>
+                {
+                  comparison
+                    .changed
+                    .length
+                }
+              </strong>
+            </div>
+          </div>
+
+          <div className="run-top-change">
+            <span>
+              Top finding
+            </span>
+
+            <div>
+              <strong>
+                {comparison
+                  .baselineSummary
+                  .topInsight
+                  ?.title ??
+                  "None"}
+              </strong>
+
+              <span>
+                →
+              </span>
+
+              <strong>
+                {comparison
+                  .currentSummary
+                  .topInsight
+                  ?.title ??
+                  "None"}
+              </strong>
+            </div>
+          </div>
+
+          <div className="run-change-grid">
+            <RunChangeList
+              title="New signals"
+              description="Present in the newer run only"
+              items={
+                comparison.added
+              }
+            />
+
+            <RunChangeList
+              title="No longer detected"
+              description="Present in the baseline only"
+              items={
+                comparison.removed
+              }
+            />
+
+            <RunChangeList
+              title="Changed signals"
+              description="Same analytical signal with changed ranking or confidence"
+              items={
+                comparison.changed
+              }
+              type="changed"
+            />
+          </div>
+        </div>
+      )}
     </section>
   );
 }
+
 
 function CorrelationScatterPlot({
   visualization,
@@ -2475,6 +3385,9 @@ export default function App() {
       {history && (
         <AnalysisRunHistory
           history={history}
+          currentRunId={
+            analysis?.analysis_run_id
+          }
         />
       )}
 
