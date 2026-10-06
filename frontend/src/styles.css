@@ -1309,3 +1309,61 @@ button {
     padding: 8px;
   }
 }
+/* ----------------------------------
+   GROUNDED EXPLANATION MARKDOWN
+---------------------------------- */
+
+.markdown-body {
+  color: #b9cbc3;
+  line-height: 1.65;
+}
+
+.markdown-body p {
+  margin: 0 0 10px;
+}
+
+.markdown-body p:last-child {
+  margin-bottom: 0;
+}
+
+.markdown-heading {
+  margin: 16px 0 8px;
+  color: #edf3e8;
+  font-size: .86rem;
+  line-height: 1.35;
+}
+
+.markdown-heading:first-child {
+  margin-top: 0;
+}
+
+.markdown-list {
+  display: grid;
+  gap: 7px;
+  margin: 8px 0 14px;
+  padding-left: 20px;
+  color: #b9cbc3;
+}
+
+.markdown-list li {
+  padding-left: 2px;
+  line-height: 1.55;
+}
+
+.markdown-body strong {
+  color: #e4edb8;
+  font-weight: 650;
+}
+
+.markdown-divider {
+  height: 1px;
+  margin: 16px 0;
+  border: 0;
+  background:
+    rgba(
+      202,
+      221,
+      211,
+      .12
+    );
+}

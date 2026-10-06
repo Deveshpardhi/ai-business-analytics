@@ -1357,6 +1357,201 @@ function EvidenceVisual({
 }
 
 
+
+function renderInlineMarkdown(
+  text,
+  keyPrefix = "inline"
+) {
+  const parts = String(
+    text ?? ""
+  ).split(
+    /(\*\*[^*]+\*\*)/g
+  );
+
+  return parts.map(
+    (part, index) => {
+      if (
+        part.startsWith("**") &&
+        part.endsWith("**") &&
+        part.length > 4
+      ) {
+        return (
+          <strong
+            key={
+              `${keyPrefix}-bold-${index}`
+            }
+          >
+            {part.slice(2, -2)}
+          </strong>
+        );
+      }
+
+      return part;
+    }
+  );
+}
+
+
+function MarkdownText({
+  text,
+}) {
+  if (!text) {
+    return null;
+  }
+
+  const lines = String(text)
+    .replace(/\r\n/g, "\n")
+    .split("\n");
+
+  const elements = [];
+
+  let paragraphLines = [];
+  let listItems = [];
+
+  const flushParagraph = () => {
+    if (!paragraphLines.length) {
+      return;
+    }
+
+    const content =
+      paragraphLines.join(" ");
+
+    const key =
+      `paragraph-${elements.length}`;
+
+    elements.push(
+      <p key={key}>
+        {renderInlineMarkdown(
+          content,
+          key
+        )}
+      </p>
+    );
+
+    paragraphLines = [];
+  };
+
+  const flushList = () => {
+    if (!listItems.length) {
+      return;
+    }
+
+    const key =
+      `list-${elements.length}`;
+
+    elements.push(
+      <ul
+        className="markdown-list"
+        key={key}
+      >
+        {listItems.map(
+          (item, index) => (
+            <li
+              key={
+                `${key}-${index}`
+              }
+            >
+              {renderInlineMarkdown(
+                item,
+                `${key}-${index}`
+              )}
+            </li>
+          )
+        )}
+      </ul>
+    );
+
+    listItems = [];
+  };
+
+  lines.forEach(
+    (rawLine) => {
+      const line =
+        rawLine.trim();
+
+      if (!line) {
+        flushParagraph();
+        flushList();
+        return;
+      }
+
+      if (/^-{3,}$/.test(line)) {
+        flushParagraph();
+        flushList();
+
+        elements.push(
+          <hr
+            className="markdown-divider"
+            key={
+              `divider-${elements.length}`
+            }
+          />
+        );
+
+        return;
+      }
+
+      const headingMatch =
+        line.match(
+          /^#{1,4}\s+(.+)$/
+        );
+
+      if (headingMatch) {
+        flushParagraph();
+        flushList();
+
+        const key =
+          `heading-${elements.length}`;
+
+        elements.push(
+          <h5
+            className="markdown-heading"
+            key={key}
+          >
+            {renderInlineMarkdown(
+              headingMatch[1],
+              key
+            )}
+          </h5>
+        );
+
+        return;
+      }
+
+      const bulletMatch =
+        line.match(
+          /^[-*]\s+(.+)$/
+        );
+
+      if (bulletMatch) {
+        flushParagraph();
+
+        listItems.push(
+          bulletMatch[1]
+        );
+
+        return;
+      }
+
+      flushList();
+
+      paragraphLines.push(
+        line
+      );
+    }
+  );
+
+  flushParagraph();
+  flushList();
+
+  return (
+    <div className="markdown-body">
+      {elements}
+    </div>
+  );
+}
+
+
 function InsightCard({
   insight,
   explanation,
@@ -1448,12 +1643,12 @@ function InsightCard({
 
         {explanation?.status ===
         "approved" ? (
-          <p>
-            {
+          <MarkdownText
+            text={
               explanation.explanation
                 .text
             }
-          </p>
+          />
         ) : (
           <p className="muted">
             {explanation?.status ===
