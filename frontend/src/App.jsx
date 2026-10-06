@@ -1687,6 +1687,354 @@ function InsightCard({
 }
 
 
+
+function getExecutiveMetric(
+  insight
+) {
+  const evidence =
+    insight?.evidence ?? {};
+
+  if (
+    insight?.insight_type ===
+      "time_series_trend" &&
+    typeof evidence.percentage_change ===
+      "number"
+  ) {
+    const value =
+      evidence.percentage_change;
+
+    return {
+      label: "Overall change",
+      value:
+        `${value > 0 ? "+" : ""}` +
+        `${formatValue(value)}%`,
+    };
+  }
+
+  if (
+    insight?.insight_type ===
+      "correlation" &&
+    typeof evidence.correlation ===
+      "number"
+  ) {
+    return {
+      label: "Correlation",
+      value: formatValue(
+        evidence.correlation
+      ),
+    };
+  }
+
+  if (
+    insight?.insight_type ===
+      "group_difference" &&
+    typeof evidence.percentage_difference ===
+      "number"
+  ) {
+    return {
+      label: "Difference",
+      value:
+        `${formatValue(
+          Math.abs(
+            evidence.percentage_difference
+          )
+        )}%`,
+    };
+  }
+
+  if (
+    insight?.insight_type ===
+      "outlier" &&
+    typeof evidence.outlier_count ===
+      "number"
+  ) {
+    return {
+      label: "Outliers",
+      value: formatValue(
+        evidence.outlier_count
+      ),
+    };
+  }
+
+  if (
+    typeof insight?.score ===
+    "number"
+  ) {
+    return {
+      label: "Priority score",
+      value: formatValue(
+        insight.score
+      ),
+    };
+  }
+
+  return null;
+}
+
+
+function ExecutiveSummary({
+  insights,
+}) {
+  if (!insights?.length) {
+    return null;
+  }
+
+  const confidenceCounts =
+    insights.reduce(
+      (counts, insight) => {
+        const level =
+          insight.confidence
+            ?.level?.toLowerCase();
+
+        if (
+          level === "high" ||
+          level === "medium" ||
+          level === "low"
+        ) {
+          counts[level] += 1;
+        }
+
+        return counts;
+      },
+      {
+        high: 0,
+        medium: 0,
+        low: 0,
+      }
+    );
+
+  const topInsight =
+    insights[0];
+
+  const priorityInsights =
+    insights.slice(1, 4);
+
+  const topMetric =
+    getExecutiveMetric(
+      topInsight
+    );
+
+  return (
+    <section className="executive-summary">
+      <div className="executive-summary-header">
+        <div>
+          <p className="eyebrow">
+            Executive summary
+          </p>
+
+          <h2>
+            What matters most
+          </h2>
+
+          <p>
+            A concise view of the
+            highest-ranked verified
+            signals from the
+            deterministic analysis.
+          </p>
+        </div>
+
+        <StatusPill tone="success">
+          Verified only
+        </StatusPill>
+      </div>
+
+      <div className="executive-summary-stats">
+        <div className="executive-stat">
+          <span>
+            Verified signals
+          </span>
+
+          <strong>
+            {insights.length}
+          </strong>
+        </div>
+
+        <div className="executive-stat">
+          <span>
+            High confidence
+          </span>
+
+          <strong>
+            {
+              confidenceCounts.high
+            }
+          </strong>
+        </div>
+
+        <div className="executive-stat">
+          <span>
+            Medium confidence
+          </span>
+
+          <strong>
+            {
+              confidenceCounts.medium
+            }
+          </strong>
+        </div>
+
+        <div className="executive-stat">
+          <span>
+            Low confidence
+          </span>
+
+          <strong>
+            {
+              confidenceCounts.low
+            }
+          </strong>
+        </div>
+      </div>
+
+      <div className="executive-summary-grid">
+        <article className="executive-top-finding">
+          <div className="executive-finding-topline">
+            <div>
+              <span className="executive-rank">
+                #1
+              </span>
+
+              <span>
+                Top verified finding
+              </span>
+            </div>
+
+            <StatusPill
+              tone={
+                topInsight
+                  .confidence
+                  ?.level ===
+                "high"
+                  ? "success"
+                  : "dark"
+              }
+            >
+              {
+                topInsight
+                  .confidence
+                  ?.level ??
+                "Confidence unavailable"
+              }
+            </StatusPill>
+          </div>
+
+          <h3>
+            {topInsight.title}
+          </h3>
+
+          <p className="executive-source">
+            {
+              topInsight
+                .source_columns
+                ?.join(" · ")
+            }
+          </p>
+
+          <div className="executive-top-metrics">
+            {topMetric && (
+              <div>
+                <span>
+                  {topMetric.label}
+                </span>
+
+                <strong>
+                  {topMetric.value}
+                </strong>
+              </div>
+            )}
+
+            {typeof
+              topInsight.score ===
+              "number" && (
+              <div>
+                <span>
+                  Priority score
+                </span>
+
+                <strong>
+                  {formatValue(
+                    topInsight.score
+                  )}
+                </strong>
+              </div>
+            )}
+          </div>
+        </article>
+
+        {priorityInsights.length >
+          0 && (
+          <aside className="executive-priority-list">
+            <div className="executive-priority-heading">
+              <strong>
+                Other priority signals
+              </strong>
+
+              <span>
+                Next highest-ranked
+                findings
+              </span>
+            </div>
+
+            <ol>
+              {priorityInsights.map(
+                (
+                  insight,
+                  index
+                ) => {
+                  const metric =
+                    getExecutiveMetric(
+                      insight
+                    );
+
+                  return (
+                    <li
+                      key={
+                        `${insight.insight_type}-` +
+                        `${insight.title}`
+                      }
+                    >
+                      <div className="executive-priority-rank">
+                        {index + 2}
+                      </div>
+
+                      <div className="executive-priority-copy">
+                        <strong>
+                          {insight.title}
+                        </strong>
+
+                        <span>
+                          {
+                            insight
+                              .confidence
+                              ?.level ??
+                            "Confidence unavailable"
+                          }
+                          {metric
+                            ? ` · ${metric.label}: ${metric.value}`
+                            : ""}
+                        </span>
+                      </div>
+                    </li>
+                  );
+                }
+              )}
+            </ol>
+          </aside>
+        )}
+      </div>
+
+      <p className="executive-summary-note">
+        This summary reorganizes
+        already-verified analytical
+        results. It does not introduce
+        new AI-generated calculations.
+      </p>
+    </section>
+  );
+}
+
+
 function ResultsDashboard({
   analysis,
 }) {
@@ -1761,6 +2109,10 @@ function ResultsDashboard({
           )}
         </StatusPill>
       </div>
+
+      <ExecutiveSummary
+        insights={insights}
+      />
 
       <TimeSeriesResults
         analysis={analysis}
