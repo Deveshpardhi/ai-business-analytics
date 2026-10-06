@@ -1132,3 +1132,180 @@ button {
     display: grid;
   }
 }
+
+/* ----------------------------------
+   TIME SERIES
+---------------------------------- */
+
+.time-series-results {
+  margin: 28px 0 34px;
+}
+
+.time-series-section-heading {
+  margin-bottom: 16px;
+}
+
+.time-series-section-heading h2 {
+  margin: 0;
+  color: #f6f4e8;
+  letter-spacing: -.04em;
+}
+
+.time-series-section-heading p:last-child {
+  color: #9bb0a8;
+  line-height: 1.55;
+  max-width: 680px;
+}
+
+.time-series-grid {
+  display: grid;
+  gap: 18px;
+}
+
+.time-series-card {
+  padding: 22px;
+  border:
+    1px solid
+    rgba(
+      202,
+      221,
+      211,
+      .12
+    );
+  border-radius: 14px;
+  background:
+    rgba(
+      19,
+      39,
+      36,
+      .72
+    );
+}
+
+.time-series-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.time-series-heading h3 {
+  margin: 0;
+  color: #eef4e9;
+  font-size: 1.05rem;
+}
+
+.time-series-heading p:last-child {
+  margin: 7px 0 0;
+  color: #91aaa1;
+  font-size: .78rem;
+  line-height: 1.5;
+}
+
+.time-series-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  margin: 18px 0 8px;
+  color: #879f96;
+  font-size: .7rem;
+}
+
+.time-series-meta strong {
+  color: #dcebb3;
+  font-family:
+    "DM Mono",
+    monospace;
+}
+
+.time-series-chart {
+  margin-top: 10px;
+  padding: 14px;
+  border:
+    1px solid
+    rgba(
+      202,
+      221,
+      211,
+      .08
+    );
+  border-radius: 10px;
+  background:
+    rgba(
+      10,
+      27,
+      25,
+      .5
+    );
+}
+
+.time-series-chart svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.time-series-axis {
+  stroke:
+    rgba(
+      195,
+      216,
+      206,
+      .3
+    );
+  stroke-width: 1;
+}
+
+.time-series-line {
+  fill: none;
+  stroke: #b8dc94;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.time-series-point {
+  fill: #e2efa9;
+  opacity: .76;
+}
+
+.time-series-point:hover {
+  opacity: 1;
+}
+
+.time-series-tick,
+.time-series-axis-label {
+  fill: #8fa79e;
+  font-family:
+    "DM Mono",
+    monospace;
+  font-size: 9px;
+}
+
+.time-series-axis-label {
+  fill: #b7c8c1;
+}
+
+.time-series-note {
+  margin: 10px 0 0;
+  color: #819990;
+  font-size: .68rem;
+  line-height: 1.5;
+}
+
+@media (
+  max-width: 640px
+) {
+  .time-series-heading {
+    display: grid;
+  }
+
+  .time-series-card {
+    padding: 16px;
+  }
+
+  .time-series-chart {
+    padding: 8px;
+  }
+}

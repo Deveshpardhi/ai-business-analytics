@@ -33,6 +33,62 @@ function formatValue(value) {
   return String(value);
 }
 
+function sampleSeriesPoints(
+  data,
+  maxPoints = 240,
+) {
+  if (!Array.isArray(data)) {
+    return [];
+  }
+
+  if (data.length <= maxPoints) {
+    return data;
+  }
+
+  return Array.from(
+    {
+      length: maxPoints,
+    },
+    (_, index) => {
+      const sourceIndex = Math.round(
+        index *
+          (data.length - 1) /
+          (maxPoints - 1)
+      );
+
+      return data[sourceIndex];
+    }
+  );
+}
+
+
+function formatChartDate(value) {
+  if (
+    value === null ||
+    value === undefined
+  ) {
+    return "Unknown";
+  }
+
+  const date = new Date(value);
+
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
+    return String(value);
+  }
+
+  return date.toLocaleDateString(
+    undefined,
+    {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    }
+  );
+}
 
 function StatusPill({
   tone = "neutral",
@@ -791,6 +847,423 @@ function GroupComparisonBarChart({
   );
 }
 
+function TimeSeriesLineChart({
+  result,
+}) {
+  const measure = result?.measure;
+  const dateColumn = result?.date;
+
+  const sourceData =
+    result?.data ?? [];
+
+  const sampledData =
+    sampleSeriesPoints(
+      sourceData
+    );
+
+  const points = sampledData
+    .map((row) => ({
+      date: row?.[dateColumn],
+      value: Number(
+        row?.[measure]
+      ),
+    }))
+    .filter(
+      (point) =>
+        point.date !==
+          null &&
+        point.date !==
+          undefined &&
+        Number.isFinite(
+          point.value
+        )
+    );
+
+  if (
+    !measure ||
+    !dateColumn ||
+    points.length < 2
+  ) {
+    return null;
+  }
+
+  const width = 720;
+  const height = 280;
+
+  const padding = {
+    top: 22,
+    right: 22,
+    bottom: 52,
+    left: 64,
+  };
+
+  const chartWidth =
+    width -
+    padding.left -
+    padding.right;
+
+  const chartHeight =
+    height -
+    padding.top -
+    padding.bottom;
+
+  const values = points.map(
+    (point) => point.value
+  );
+
+  const minimum =
+    Math.min(...values);
+
+  const maximum =
+    Math.max(...values);
+
+  const valueRange =
+    maximum - minimum || 1;
+
+  const coordinates =
+    points.map(
+      (point, index) => {
+        const x =
+          padding.left +
+          (
+            index /
+            (points.length - 1)
+          ) *
+            chartWidth;
+
+        const y =
+          padding.top +
+          chartHeight -
+          (
+            (
+              point.value -
+              minimum
+            ) /
+            valueRange
+          ) *
+            chartHeight;
+
+        return {
+          ...point,
+          x,
+          y,
+        };
+      }
+    );
+
+  const polylinePoints =
+    coordinates
+      .map(
+        (point) =>
+          `${point.x},${point.y}`
+      )
+      .join(" ");
+
+  const first =
+    coordinates[0];
+
+  const last =
+    coordinates[
+      coordinates.length - 1
+    ];
+
+  return (
+    <article className="time-series-card">
+      <div className="time-series-heading">
+        <div>
+          <p className="eyebrow">
+            Deterministic trend analysis
+          </p>
+
+          <h3>
+            {measure}
+            {" over "}
+            {dateColumn}
+          </h3>
+
+          <p>
+            Sorted observations from
+            the deterministic analytics
+            engine. AI is not used to
+            calculate this chart.
+          </p>
+        </div>
+
+        <StatusPill
+          tone="success"
+        >
+          Deterministic
+        </StatusPill>
+      </div>
+
+      <div className="time-series-meta">
+        <span>
+          <strong>
+            {result.sample_size ??
+              sourceData.length}
+          </strong>
+          {" observations"}
+        </span>
+
+        <span>
+          <strong>
+            {formatValue(
+              minimum
+            )}
+          </strong>
+          {" minimum"}
+        </span>
+
+        <span>
+          <strong>
+            {formatValue(
+              maximum
+            )}
+          </strong>
+          {" maximum"}
+        </span>
+      </div>
+
+      <div className="time-series-chart">
+        <svg
+          viewBox={
+            `0 0 ${width} ${height}`
+          }
+          role="img"
+          aria-label={
+            `${measure} over ` +
+            `${dateColumn} line chart`
+          }
+        >
+          <line
+            className="time-series-axis"
+            x1={padding.left}
+            y1={
+              padding.top +
+              chartHeight
+            }
+            x2={
+              padding.left +
+              chartWidth
+            }
+            y2={
+              padding.top +
+              chartHeight
+            }
+          />
+
+          <line
+            className="time-series-axis"
+            x1={padding.left}
+            y1={padding.top}
+            x2={padding.left}
+            y2={
+              padding.top +
+              chartHeight
+            }
+          />
+
+          <text
+            className="time-series-tick"
+            x={
+              padding.left - 10
+            }
+            y={
+              padding.top + 4
+            }
+            textAnchor="end"
+          >
+            {formatValue(
+              maximum
+            )}
+          </text>
+
+          <text
+            className="time-series-tick"
+            x={
+              padding.left - 10
+            }
+            y={
+              padding.top +
+              chartHeight
+            }
+            textAnchor="end"
+          >
+            {formatValue(
+              minimum
+            )}
+          </text>
+
+          <polyline
+            className="time-series-line"
+            points={
+              polylinePoints
+            }
+          />
+
+          {coordinates.map(
+            (
+              point,
+              index
+            ) => (
+              <circle
+                className="time-series-point"
+                key={
+                  `${point.date}-` +
+                  `${index}`
+                }
+                cx={point.x}
+                cy={point.y}
+                r={
+                  coordinates.length >
+                  80
+                    ? 1.8
+                    : 3
+                }
+              >
+                <title>
+                  {formatChartDate(
+                    point.date
+                  )}
+                  {": "}
+                  {formatValue(
+                    point.value
+                  )}
+                </title>
+              </circle>
+            )
+          )}
+
+          <text
+            className="time-series-tick"
+            x={first.x}
+            y={
+              height - 24
+            }
+          >
+            {formatChartDate(
+              first.date
+            )}
+          </text>
+
+          <text
+            className="time-series-tick"
+            x={last.x}
+            y={
+              height - 24
+            }
+            textAnchor="end"
+          >
+            {formatChartDate(
+              last.date
+            )}
+          </text>
+
+          <text
+            className="time-series-axis-label"
+            x={
+              padding.left +
+              chartWidth / 2
+            }
+            y={height - 4}
+            textAnchor="middle"
+          >
+            {dateColumn}
+          </text>
+
+          <text
+            className="time-series-axis-label"
+            transform={
+              `translate(15 ${
+                padding.top +
+                chartHeight / 2
+              }) rotate(-90)`
+            }
+            textAnchor="middle"
+          >
+            {measure}
+          </text>
+        </svg>
+      </div>
+
+      {sourceData.length >
+        sampledData.length && (
+        <p className="time-series-note">
+          Visualization displays a
+          deterministic sample of{" "}
+          {sampledData.length}
+          {" from "}
+          {sourceData.length}
+          {" observations. "}
+          The underlying analysis uses
+          the complete time series.
+        </p>
+      )}
+    </article>
+  );
+}
+
+
+function TimeSeriesResults({
+  analysis,
+}) {
+  const results =
+    analysis?.analysis_results
+      ?.filter(
+        (result) =>
+          result.type ===
+            "time_series" &&
+          Array.isArray(
+            result.data
+          ) &&
+          result.data.length > 1
+      ) ?? [];
+
+  if (!results.length) {
+    return null;
+  }
+
+  return (
+    <section className="time-series-results">
+      <div className="time-series-section-heading">
+        <div>
+          <p className="eyebrow">
+            Time-series analysis
+          </p>
+
+          <h2>
+            Deterministic trends
+          </h2>
+
+          <p>
+            These charts show the
+            sorted analytical series
+            directly. They are not
+            AI-generated insights.
+          </p>
+        </div>
+      </div>
+
+      <div className="time-series-grid">
+        {results.map(
+          (
+            result,
+            index
+          ) => (
+            <TimeSeriesLineChart
+              key={
+                `${result.measure}-` +
+                `${result.date}-` +
+                `${index}`
+              }
+              result={result}
+            />
+          )
+        )}
+      </div>
+    </section>
+  );
+}
 
 function EvidenceVisual({
   insight,
@@ -1093,6 +1566,10 @@ function ResultsDashboard({
           )}
         </StatusPill>
       </div>
+
+      <TimeSeriesResults
+        analysis={analysis}
+      />
 
       {insights.length ? (
         <div className="insight-grid">
