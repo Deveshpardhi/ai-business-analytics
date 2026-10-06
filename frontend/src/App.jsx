@@ -635,6 +635,162 @@ function CorrelationScatterPlot({
   );
 }
 
+function GroupComparisonBarChart({
+  visualization,
+}) {
+  const groups =
+    visualization?.groups ?? [];
+
+  if (!groups.length) {
+    return null;
+  }
+
+  const means = groups
+    .map((group) =>
+      Number(group.mean)
+    )
+    .filter(Number.isFinite);
+
+  if (!means.length) {
+    return null;
+  }
+
+  const minimum = Math.min(
+    0,
+    ...means
+  );
+
+  const maximum = Math.max(
+    0,
+    ...means
+  );
+
+  const range =
+    maximum - minimum || 1;
+
+  const zeroPosition =
+    ((0 - minimum) / range) * 100;
+
+  return (
+    <div className="group-chart">
+      <div className="group-chart-heading">
+        <div>
+          <strong>
+            Average{" "}
+            {visualization.measure}
+            {" by "}
+            {visualization.dimension}
+          </strong>
+
+          <span>
+            Deterministic group means
+          </span>
+        </div>
+
+        <small>
+          {visualization.displayed_groups}
+          {" of "}
+          {visualization.total_groups}
+          {" groups"}
+        </small>
+      </div>
+
+      <div className="group-bars">
+        {groups.map(
+          (group, index) => {
+            const mean = Number(
+              group.mean
+            );
+
+            if (
+              !Number.isFinite(mean)
+            ) {
+              return null;
+            }
+
+            const valuePosition =
+              ((mean - minimum) /
+                range) *
+              100;
+
+            const barLeft =
+              Math.min(
+                zeroPosition,
+                valuePosition
+              );
+
+            const barWidth =
+              Math.max(
+                Math.abs(
+                  valuePosition -
+                    zeroPosition
+                ),
+                1
+              );
+
+            return (
+              <div
+                className="group-bar-row"
+                key={
+                  `${group.label}-` +
+                  `${index}`
+                }
+              >
+                <div className="group-bar-label">
+                  <strong>
+                    {group.label}
+                  </strong>
+
+                  <small>
+                    n={group.count}
+                  </small>
+                </div>
+
+                <div className="group-bar-track">
+                  <span
+                    className="group-zero-line"
+                    style={{
+                      left:
+                        `${zeroPosition}%`,
+                    }}
+                  />
+
+                  <span
+                    className="group-bar-fill"
+                    style={{
+                      left:
+                        `${barLeft}%`,
+                      width:
+                        `${barWidth}%`,
+                    }}
+                  />
+                </div>
+
+                <div className="group-bar-value">
+                  {formatValue(
+                    group.mean
+                  )}
+                </div>
+              </div>
+            );
+          }
+        )}
+      </div>
+
+      {visualization.sampled && (
+        <p className="group-chart-note">
+          Showing the highest and
+          lowest{" "}
+          {visualization.displayed_groups}
+          {" groups from "}
+          {visualization.total_groups}
+          {" total groups."}
+        </p>
+      )}
+    </div>
+  );
+}
+
 
 function EvidenceVisual({
   insight,
@@ -687,6 +843,23 @@ function EvidenceVisual({
       </div>
     );
   }
+
+  if (
+  insight.insight_type ===
+  "group_difference"
+) {
+  const visualization =
+    insight.calculation
+      ?.visualization;
+
+  return (
+    <GroupComparisonBarChart
+      visualization={
+        visualization
+      }
+    />
+  );
+}
 
   if (
     insight.insight_type === "outlier" &&

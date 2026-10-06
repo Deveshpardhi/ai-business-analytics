@@ -995,3 +995,140 @@ button {
     flex-direction: column;
   }
 }
+
+
+/* ----------------------------------
+   GROUP COMPARISON CHART
+---------------------------------- */
+
+.group-chart {
+  margin: 18px 0;
+  padding: 16px;
+  border:
+    1px solid
+    rgba(202, 221, 211, .1);
+  border-radius: 10px;
+  background:
+    rgba(11, 29, 27, .56);
+}
+
+.group-chart-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.group-chart-heading div {
+  display: grid;
+  gap: 3px;
+}
+
+.group-chart-heading strong {
+  color: #e8f2e7;
+  font-size: .82rem;
+}
+
+.group-chart-heading span,
+.group-chart-heading small {
+  color: #8fa79e;
+  font-size: .7rem;
+}
+
+.group-bars {
+  display: grid;
+  gap: 11px;
+}
+
+.group-bar-row {
+  display: grid;
+  grid-template-columns:
+    minmax(85px, 120px)
+    minmax(120px, 1fr)
+    minmax(60px, 90px);
+  gap: 10px;
+  align-items: center;
+}
+
+.group-bar-label {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.group-bar-label strong {
+  color: #c7d8d0;
+  font-size: .72rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.group-bar-label small {
+  color: #7f978e;
+  font-size: .62rem;
+}
+
+.group-bar-track {
+  height: 18px;
+  position: relative;
+  border-radius: 4px;
+  background:
+    rgba(67, 96, 87, .26);
+  overflow: hidden;
+}
+
+.group-zero-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background:
+    rgba(228, 239, 233, .34);
+  z-index: 2;
+}
+
+.group-bar-fill {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  border-radius: 3px;
+  background:
+    linear-gradient(
+      90deg,
+      #83c48f,
+      #d9eba9
+    );
+}
+
+.group-bar-value {
+  color: #dcebb3;
+  text-align: right;
+  font:
+    .68rem
+    "DM Mono",
+    monospace;
+}
+
+.group-chart-note {
+  margin: 14px 0 0;
+  color: #819990;
+  font-size: .68rem;
+  line-height: 1.45;
+}
+
+@media (
+  max-width: 640px
+) {
+  .group-bar-row {
+    grid-template-columns:
+      80px
+      minmax(90px, 1fr)
+      60px;
+  }
+
+  .group-chart-heading {
+    display: grid;
+  }
+}

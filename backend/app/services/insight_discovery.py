@@ -32,6 +32,86 @@ def discover_insights(analysis_results: list[dict]) -> list[dict]:
 
     return insights
 
+def _build_group_visualization(
+    groups,
+    measure,
+    dimension,
+    max_groups=12,
+):
+    """
+    Build deterministic group-comparison chart data.
+
+    For large category sets, preserve the highest and lowest
+    groups by mean rather than sending every category to the UI.
+    """
+    valid_groups = [
+        group
+        for group in groups
+        if group.get("mean") is not None
+    ]
+
+    total_groups = len(valid_groups)
+
+    if total_groups <= max_groups:
+        selected_groups = valid_groups
+    else:
+        top_count = max_groups // 2
+        bottom_count = (
+            max_groups - top_count
+        )
+
+        selected_groups = (
+            valid_groups[:top_count]
+            + valid_groups[-bottom_count:]
+        )
+
+    chart_groups = []
+
+    for group in selected_groups:
+        raw_label = group.get(
+            dimension
+        )
+
+        label = (
+            "Missing"
+            if raw_label is None
+            else str(raw_label)
+        )
+
+        chart_groups.append(
+            {
+                "label": label,
+                "mean": group.get(
+                    "mean"
+                ),
+                "count": group.get(
+                    "count"
+                ),
+                "median": group.get(
+                    "median"
+                ),
+                "min": group.get(
+                    "min"
+                ),
+                "max": group.get(
+                    "max"
+                ),
+            }
+        )
+
+    return {
+        "type": "group_bar",
+        "measure": measure,
+        "dimension": dimension,
+        "groups": chart_groups,
+        "total_groups": total_groups,
+        "displayed_groups": len(
+            chart_groups
+        ),
+        "sampled": (
+            total_groups > max_groups
+        ),
+    }
 
 def discover_group_insights(result: dict) -> list[dict]:
     groups = result.get("groups", [])
@@ -77,9 +157,23 @@ def discover_group_insights(result: dict) -> list[dict]:
         "title": f"{highest[dimension]} has the highest average {measure}",
         "evidence": evidence,
         "calculation": {
-            "comparison": "highest_group_mean - lowest_group_mean",
-            "absolute_difference": highest_mean - lowest_mean,
-            "percentage_difference": percentage_difference,
+            "comparison": (
+            "highest_group_mean - "
+            "lowest_group_mean"
+            ),
+        "absolute_difference": (
+            highest_mean - lowest_mean
+        ),
+        "percentage_difference": (
+            percentage_difference
+        ),
+        "visualization": (
+            _build_group_visualization(
+                groups,
+                measure,
+                dimension,
+            )
+        ),
         },
         "confidence": {
             "level": "pending_verification",
