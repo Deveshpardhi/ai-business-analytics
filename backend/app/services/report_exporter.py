@@ -8,6 +8,25 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font
 from openpyxl.utils import get_column_letter
 
+from reportlab.lib import colors
+from reportlab.lib.enums import TA_LEFT
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import (
+    ParagraphStyle,
+    getSampleStyleSheet,
+)
+from reportlab.lib.units import mm
+from reportlab.platypus import (
+    KeepTogether,
+    Paragraph,
+    SimpleDocTemplate,
+    Spacer,
+    Table,
+    TableStyle,
+)
+from xml.sax.saxutils import escape
+import re
+
 
 CSV_HEADERS = [
     "rank",
@@ -581,5 +600,983 @@ def build_xlsx_export(
 
     output = io.BytesIO()
     workbook.save(output)
+
+    return output.getvalue()
+
+
+def _plain_report_text(
+    value: Any,
+) -> str:
+    if value is None:
+        return ""
+
+    if isinstance(
+        value,
+        (dict, list, tuple),
+    ):
+        value = json.dumps(
+            value,
+            ensure_ascii=False,
+            sort_keys=True,
+            default=str,
+        )
+
+    value = str(value)
+
+    value = re.sub(
+        r"(?m)^#{1,6}\s*",
+        "",
+        value,
+    )
+
+    value = re.sub(
+        r"\*\*(.*?)\*\*",
+        r"\1",
+        value,
+    )
+
+    value = re.sub(
+        r"(?m)^\s*[-*]\s+",
+        "- ",
+        value,
+    )
+
+    value = value.replace(
+        "---",
+        "",
+    )
+
+    return value.strip()
+
+
+def _pdf_paragraph(
+    value: Any,
+    style,
+):
+    text = _plain_report_text(
+        value
+    )
+
+    safe = escape(text)
+
+    safe = safe.replace(
+        "\n",
+        "<br/>",
+    )
+
+    return Paragraph(
+        safe or "-",
+        style,
+    )
+
+
+def build_pdf_export(
+    *,
+    run_id,
+    dataset_version_id,
+    status,
+    created_at,
+    ranked_insights,
+    explained_insights,
+    recommended_insights,
+) -> bytes:
+    """
+    Build a presentation-ready PDF exclusively
+    from persisted verified reporting outputs.
+
+    Raw dataset rows and protected columns are
+    intentionally outside this function boundary.
+    """
+    rows = build_verified_insight_rows(
+        ranked_insights,
+        explained_insights,
+        recommended_insights,
+    )
+
+    output = io.BytesIO()
+
+    document = SimpleDocTemplate(
+        output,
+        pagesize=A4,
+        rightMargin=17 * mm,
+        leftMargin=17 * mm,
+        topMargin=19 * mm,
+        bottomMargin=18 * mm,
+        title=(
+            "Signal Ledger "
+            "Verified Analysis Report"
+        ),
+        author="Signal Ledger",
+    )
+
+    styles = getSampleStyleSheet()
+
+    title_style = ParagraphStyle(
+        "ReportTitle",
+        parent=styles["Title"],
+        fontName="Helvetica-Bold",
+        fontSize=22,
+        leading=27,
+        textColor=colors.HexColor(
+            "#16312C"
+        ),
+        spaceAfter=6,
+        alignment=TA_LEFT,
+    )
+
+    subtitle_style = ParagraphStyle(
+        "ReportSubtitle",
+        parent=styles["Normal"],
+        fontName="Helvetica",
+        fontSize=9,
+        leading=13,
+        textColor=colors.HexColor(
+            "#667B74"
+        ),
+        spaceAfter=15,
+    )
+
+    heading_style = ParagraphStyle(
+        "ReportHeading",
+        parent=styles["Heading2"],
+        fontName="Helvetica-Bold",
+        fontSize=13,
+        leading=17,
+        textColor=colors.HexColor(
+            "#16312C"
+        ),
+        spaceBefore=8,
+        spaceAfter=8,
+    )
+
+    insight_title_style = ParagraphStyle(
+        "InsightTitle",
+        parent=styles["Heading3"],
+        fontName="Helvetica-Bold",
+        fontSize=11,
+        leading=15,
+        textColor=colors.HexColor(
+            "#1F3933"
+        ),
+        spaceAfter=5,
+    )
+
+    body_style = ParagraphStyle(
+        "ReportBody",
+        parent=styles["BodyText"],
+        fontName="Helvetica",
+        fontSize=8.5,
+        leading=12,
+        textColor=colors.HexColor(
+            "#344B45"
+        ),
+        spaceAfter=6,
+    )
+
+    label_style = ParagraphStyle(
+        "ReportLabel",
+        parent=styles["BodyText"],
+        fontName="Helvetica-Bold",
+        fontSize=7.5,
+        leading=10,
+        textColor=colors.HexColor(
+            "#5A7069"
+        ),
+    )
+
+    small_style = ParagraphStyle(
+        "ReportSmall",
+        parent=styles["BodyText"],
+        fontName="Helvetica",
+        fontSize=7.2,
+        leading=10,
+        textColor=colors.HexColor(
+            "#667B74"
+        ),
+    )
+
+    story = []
+
+    story.append(
+        Paragraph(
+            "Signal Ledger",
+            title_style,
+        )
+    )
+
+    story.append(
+        Paragraph(
+            (
+                "Verified Business "
+                "Analytics Report"
+            ),
+            subtitle_style,
+        )
+    )
+
+    created_text = (
+        created_at.isoformat()
+        if hasattr(
+            created_at,
+            "isoformat",
+        )
+        else str(
+            created_at or ""
+        )
+    )
+
+    metadata_data = [
+        [
+            _pdf_paragraph(
+                "Analysis Run",
+                label_style,
+            ),
+            _pdf_paragraph(
+                str(run_id),
+                small_style,
+            ),
+        ],
+        [
+            _pdf_paragraph(
+                "Dataset Version",
+                label_style,
+            ),
+            _pdf_paragraph(
+                str(
+                    dataset_version_id
+                ),
+                small_style,
+            ),
+        ],
+        [
+            _pdf_paragraph(
+                "Status",
+                label_style,
+            ),
+            _pdf_paragraph(
+                status,
+                small_style,
+            ),
+        ],
+        [
+            _pdf_paragraph(
+                "Created",
+                label_style,
+            ),
+            _pdf_paragraph(
+                created_text,
+                small_style,
+            ),
+        ],
+    ]
+
+    metadata_table = Table(
+        metadata_data,
+        colWidths=[
+            34 * mm,
+            135 * mm,
+        ],
+    )
+
+    metadata_table.setStyle(
+        TableStyle([
+            (
+                "BACKGROUND",
+                (0, 0),
+                (0, -1),
+                colors.HexColor(
+                    "#EFF4F1"
+                ),
+            ),
+            (
+                "GRID",
+                (0, 0),
+                (-1, -1),
+                0.35,
+                colors.HexColor(
+                    "#D8E1DD"
+                ),
+            ),
+            (
+                "VALIGN",
+                (0, 0),
+                (-1, -1),
+                "TOP",
+            ),
+            (
+                "LEFTPADDING",
+                (0, 0),
+                (-1, -1),
+                7,
+            ),
+            (
+                "RIGHTPADDING",
+                (0, 0),
+                (-1, -1),
+                7,
+            ),
+            (
+                "TOPPADDING",
+                (0, 0),
+                (-1, -1),
+                6,
+            ),
+            (
+                "BOTTOMPADDING",
+                (0, 0),
+                (-1, -1),
+                6,
+            ),
+        ])
+    )
+
+    story.append(
+        metadata_table
+    )
+
+    story.append(
+        Spacer(
+            1,
+            7 * mm,
+        )
+    )
+
+    story.append(
+        Paragraph(
+            "Executive Summary",
+            heading_style,
+        )
+    )
+
+    high = sum(
+        row[
+            "confidence_level"
+        ] == "high"
+        for row in rows
+    )
+
+    medium = sum(
+        row[
+            "confidence_level"
+        ] == "medium"
+        for row in rows
+    )
+
+    low = sum(
+        row[
+            "confidence_level"
+        ] == "low"
+        for row in rows
+    )
+
+    summary_data = [
+        [
+            _pdf_paragraph(
+                "Verified signals",
+                label_style,
+            ),
+            _pdf_paragraph(
+                len(rows),
+                body_style,
+            ),
+            _pdf_paragraph(
+                "High confidence",
+                label_style,
+            ),
+            _pdf_paragraph(
+                high,
+                body_style,
+            ),
+        ],
+        [
+            _pdf_paragraph(
+                "Medium confidence",
+                label_style,
+            ),
+            _pdf_paragraph(
+                medium,
+                body_style,
+            ),
+            _pdf_paragraph(
+                "Low confidence",
+                label_style,
+            ),
+            _pdf_paragraph(
+                low,
+                body_style,
+            ),
+        ],
+    ]
+
+    summary_table = Table(
+        summary_data,
+        colWidths=[
+            39 * mm,
+            20 * mm,
+            39 * mm,
+            20 * mm,
+        ],
+    )
+
+    summary_table.setStyle(
+        TableStyle([
+            (
+                "BACKGROUND",
+                (0, 0),
+                (-1, -1),
+                colors.HexColor(
+                    "#F7F9F8"
+                ),
+            ),
+            (
+                "GRID",
+                (0, 0),
+                (-1, -1),
+                0.35,
+                colors.HexColor(
+                    "#D9E2DE"
+                ),
+            ),
+            (
+                "VALIGN",
+                (0, 0),
+                (-1, -1),
+                "TOP",
+            ),
+            (
+                "LEFTPADDING",
+                (0, 0),
+                (-1, -1),
+                7,
+            ),
+            (
+                "RIGHTPADDING",
+                (0, 0),
+                (-1, -1),
+                7,
+            ),
+            (
+                "TOPPADDING",
+                (0, 0),
+                (-1, -1),
+                7,
+            ),
+            (
+                "BOTTOMPADDING",
+                (0, 0),
+                (-1, -1),
+                7,
+            ),
+        ])
+    )
+
+    story.append(
+        summary_table
+    )
+
+    if rows:
+        story.append(
+            Spacer(
+                1,
+                4 * mm,
+            )
+        )
+
+        story.append(
+            Paragraph(
+                "Top Verified Finding",
+                heading_style,
+            )
+        )
+
+        top = rows[0]
+
+        top_table = Table(
+            [
+                [
+                    _pdf_paragraph(
+                        top[
+                            "title"
+                        ],
+                        insight_title_style,
+                    )
+                ],
+                [
+                    _pdf_paragraph(
+                        (
+                            f"Confidence: "
+                            f"{top['confidence_level'] or '-'}"
+                            f" | Priority score: "
+                            f"{top['priority_score']}"
+                        ),
+                        body_style,
+                    )
+                ],
+            ],
+            colWidths=[
+                169 * mm
+            ],
+        )
+
+        top_table.setStyle(
+            TableStyle([
+                (
+                    "BACKGROUND",
+                    (0, 0),
+                    (-1, -1),
+                    colors.HexColor(
+                        "#EEF5E8"
+                    ),
+                ),
+                (
+                    "BOX",
+                    (0, 0),
+                    (-1, -1),
+                    0.6,
+                    colors.HexColor(
+                        "#B9CCAC"
+                    ),
+                ),
+                (
+                    "LEFTPADDING",
+                    (0, 0),
+                    (-1, -1),
+                    10,
+                ),
+                (
+                    "RIGHTPADDING",
+                    (0, 0),
+                    (-1, -1),
+                    10,
+                ),
+                (
+                    "TOPPADDING",
+                    (0, 0),
+                    (-1, -1),
+                    8,
+                ),
+                (
+                    "BOTTOMPADDING",
+                    (0, 0),
+                    (-1, -1),
+                    8,
+                ),
+            ])
+        )
+
+        story.append(
+            top_table
+        )
+
+    story.append(
+        Spacer(
+            1,
+            5 * mm,
+        )
+    )
+
+    story.append(
+        Paragraph(
+            "Verified Findings",
+            heading_style,
+        )
+    )
+
+    if not rows:
+        story.append(
+            Paragraph(
+                (
+                    "No ranked verified "
+                    "insights were available "
+                    "for this run."
+                ),
+                body_style,
+            )
+        )
+
+    for row in rows:
+        content = []
+
+        content.append(
+            Paragraph(
+                (
+                    f"{row['rank']}. "
+                    f"{escape(str(row['title']))}"
+                ),
+                insight_title_style,
+            )
+        )
+
+        content.append(
+            _pdf_paragraph(
+                (
+                    f"Type: "
+                    f"{row['insight_type']} | "
+                    f"Confidence: "
+                    f"{row['confidence_level']} | "
+                    f"Confidence score: "
+                    f"{row['confidence_score']} | "
+                    f"Priority score: "
+                    f"{row['priority_score']}"
+                ),
+                small_style,
+            )
+        )
+
+        content.append(
+            _pdf_paragraph(
+                (
+                    "Source columns: "
+                    f"{row['source_columns']}"
+                ),
+                small_style,
+            )
+        )
+
+        evidence = row.get(
+            "evidence",
+            {},
+        )
+
+        if isinstance(
+            evidence,
+            dict,
+        ) and evidence:
+            evidence_data = [
+                [
+                    _pdf_paragraph(
+                        "Evidence",
+                        label_style,
+                    ),
+                    _pdf_paragraph(
+                        "Verified value",
+                        label_style,
+                    ),
+                ]
+            ]
+
+            for key, value in (
+                evidence.items()
+            ):
+                evidence_data.append([
+                    _pdf_paragraph(
+                        key.replace(
+                            "_",
+                            " ",
+                        ),
+                        small_style,
+                    ),
+                    _pdf_paragraph(
+                        value,
+                        small_style,
+                    ),
+                ])
+
+            evidence_table = Table(
+                evidence_data,
+                colWidths=[
+                    58 * mm,
+                    111 * mm,
+                ],
+                repeatRows=1,
+            )
+
+            evidence_table.setStyle(
+                TableStyle([
+                    (
+                        "BACKGROUND",
+                        (0, 0),
+                        (-1, 0),
+                        colors.HexColor(
+                            "#EFF4F1"
+                        ),
+                    ),
+                    (
+                        "GRID",
+                        (0, 0),
+                        (-1, -1),
+                        0.3,
+                        colors.HexColor(
+                            "#D9E1DE"
+                        ),
+                    ),
+                    (
+                        "VALIGN",
+                        (0, 0),
+                        (-1, -1),
+                        "TOP",
+                    ),
+                    (
+                        "LEFTPADDING",
+                        (0, 0),
+                        (-1, -1),
+                        6,
+                    ),
+                    (
+                        "RIGHTPADDING",
+                        (0, 0),
+                        (-1, -1),
+                        6,
+                    ),
+                    (
+                        "TOPPADDING",
+                        (0, 0),
+                        (-1, -1),
+                        5,
+                    ),
+                    (
+                        "BOTTOMPADDING",
+                        (0, 0),
+                        (-1, -1),
+                        5,
+                    ),
+                ])
+            )
+
+            content.append(
+                Spacer(
+                    1,
+                    2 * mm,
+                )
+            )
+
+            content.append(
+                evidence_table
+            )
+
+        if row.get(
+            "explanation"
+        ):
+            content.append(
+                Spacer(
+                    1,
+                    2.5 * mm,
+                )
+            )
+
+            content.append(
+                Paragraph(
+                    "Grounded Explanation",
+                    label_style,
+                )
+            )
+
+            content.append(
+                _pdf_paragraph(
+                    row[
+                        "explanation"
+                    ],
+                    body_style,
+                )
+            )
+
+        if row.get(
+            "recommendation_action"
+        ):
+            content.append(
+                Paragraph(
+                    "Recommended Next Step",
+                    label_style,
+                )
+            )
+
+            content.append(
+                _pdf_paragraph(
+                    row[
+                        "recommendation_action"
+                    ],
+                    body_style,
+                )
+            )
+
+        if row.get(
+            "recommendation_reason"
+        ):
+            content.append(
+                _pdf_paragraph(
+                    row[
+                        "recommendation_reason"
+                    ],
+                    small_style,
+                )
+            )
+
+        limitations = row.get(
+            "limitations",
+            [],
+        )
+
+        if limitations:
+            content.append(
+                Paragraph(
+                    "Limitations",
+                    label_style,
+                )
+            )
+
+            if isinstance(
+                limitations,
+                list,
+            ):
+                limitations_text = (
+                    "\n".join(
+                        f"- {item}"
+                        for item
+                        in limitations
+                    )
+                )
+            else:
+                limitations_text = (
+                    str(
+                        limitations
+                    )
+                )
+
+            content.append(
+                _pdf_paragraph(
+                    limitations_text,
+                    small_style,
+                )
+            )
+
+        story.append(
+            KeepTogether(
+                content
+            )
+        )
+
+        story.append(
+            Spacer(
+                1,
+                5 * mm,
+            )
+        )
+
+    story.append(
+        Spacer(
+            1,
+            3 * mm,
+        )
+    )
+
+    trust_table = Table(
+        [[
+            _pdf_paragraph(
+                (
+                    "Trust boundary: this report "
+                    "contains persisted ranked "
+                    "verified insights, grounded "
+                    "explanations, recommendations, "
+                    "and run metadata only. "
+                    "Raw dataset rows and protected "
+                    "PII columns are not included."
+                ),
+                small_style,
+            )
+        ]],
+        colWidths=[
+            169 * mm
+        ],
+    )
+
+    trust_table.setStyle(
+        TableStyle([
+            (
+                "BACKGROUND",
+                (0, 0),
+                (-1, -1),
+                colors.HexColor(
+                    "#F4F7F5"
+                ),
+            ),
+            (
+                "BOX",
+                (0, 0),
+                (-1, -1),
+                0.5,
+                colors.HexColor(
+                    "#D5DEDA"
+                ),
+            ),
+            (
+                "LEFTPADDING",
+                (0, 0),
+                (-1, -1),
+                8,
+            ),
+            (
+                "RIGHTPADDING",
+                (0, 0),
+                (-1, -1),
+                8,
+            ),
+            (
+                "TOPPADDING",
+                (0, 0),
+                (-1, -1),
+                7,
+            ),
+            (
+                "BOTTOMPADDING",
+                (0, 0),
+                (-1, -1),
+                7,
+            ),
+        ])
+    )
+
+    story.append(
+        trust_table
+    )
+
+    def footer(
+        canvas,
+        doc,
+    ):
+        canvas.saveState()
+
+        canvas.setStrokeColor(
+            colors.HexColor(
+                "#DCE4E0"
+            )
+        )
+
+        canvas.line(
+            17 * mm,
+            12 * mm,
+            A4[0] - 17 * mm,
+            12 * mm,
+        )
+
+        canvas.setFont(
+            "Helvetica",
+            7,
+        )
+
+        canvas.setFillColor(
+            colors.HexColor(
+                "#788C85"
+            )
+        )
+
+        canvas.drawString(
+            17 * mm,
+            7.5 * mm,
+            "Signal Ledger - Verified analytics",
+        )
+
+        canvas.drawRightString(
+            A4[0] - 17 * mm,
+            7.5 * mm,
+            f"Page {doc.page}",
+        )
+
+        canvas.restoreState()
+
+    document.build(
+        story,
+        onFirstPage=footer,
+        onLaterPages=footer,
+    )
 
     return output.getvalue()

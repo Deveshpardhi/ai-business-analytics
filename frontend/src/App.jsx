@@ -3106,6 +3106,25 @@ function ResultsDashboard({
                     ? "Exporting…"
                     : "Excel"}
                 </button>
+
+                <button
+                  type="button"
+                  className="export-button primary"
+                  disabled={
+                    exportState !==
+                    "idle"
+                  }
+                  onClick={() =>
+                    handleExport(
+                      "pdf"
+                    )
+                  }
+                >
+                  {exportState ===
+                  "pdf"
+                    ? "Exporting…"
+                    : "PDF"}
+                </button>
               </div>
 
               {exportMessage && (

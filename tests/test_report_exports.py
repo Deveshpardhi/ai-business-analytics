@@ -7,6 +7,7 @@ from openpyxl import load_workbook
 
 from app.services.report_exporter import (
     build_csv_export,
+    build_pdf_export,
     build_verified_insight_rows,
     build_xlsx_export,
 )
@@ -290,3 +291,56 @@ def test_export_builder_does_not_need_raw_analysis_results():
         b"secret@example.com"
         not in content
     )
+
+
+
+def test_pdf_export_is_valid_pdf_and_uses_verified_reporting_layer():
+    insight = make_insight()
+
+    content = build_pdf_export(
+        run_id=uuid4(),
+        dataset_version_id=uuid4(),
+        status="completed",
+        created_at=(
+            "2026-10-06T12:00:00"
+        ),
+        ranked_insights=[
+            insight
+        ],
+        explained_insights=[
+            make_explained(
+                insight
+            )
+        ],
+        recommended_insights=[
+            make_recommended(
+                insight
+            )
+        ],
+    )
+
+    assert content.startswith(
+        b"%PDF"
+    )
+
+    assert len(content) > 2000
+
+
+def test_pdf_export_supports_empty_verified_results():
+    content = build_pdf_export(
+        run_id=uuid4(),
+        dataset_version_id=uuid4(),
+        status="completed",
+        created_at=(
+            "2026-10-06T12:00:00"
+        ),
+        ranked_insights=[],
+        explained_insights=[],
+        recommended_insights=[],
+    )
+
+    assert content.startswith(
+        b"%PDF"
+    )
+
+    assert len(content) > 1000

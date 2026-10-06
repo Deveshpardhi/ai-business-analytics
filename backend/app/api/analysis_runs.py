@@ -7,6 +7,7 @@ from app.db.database import SessionLocal
 from app.models.analysis import AnalysisRun
 from app.services.report_exporter import (
     build_csv_export,
+    build_pdf_export,
     build_xlsx_export,
 )
 
@@ -159,11 +160,50 @@ def export_analysis_run(
             },
         )
 
+    if export_format == "pdf":
+        content = build_pdf_export(
+            run_id=analysis_run.id,
+            dataset_version_id=(
+                analysis_run
+                .dataset_version_id
+            ),
+            status=analysis_run.status,
+            created_at=(
+                analysis_run.created_at
+            ),
+            ranked_insights=(
+                analysis_run
+                .ranked_insights
+            ),
+            explained_insights=(
+                analysis_run
+                .explained_insights
+            ),
+            recommended_insights=(
+                analysis_run
+                .recommended_insights
+            ),
+        )
+
+        return Response(
+            content=content,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": (
+                    f'attachment; filename="'
+                    f'{base_filename}.pdf"'
+                ),
+                "X-Export-Scope": (
+                    "ranked-verified-insights"
+                ),
+            },
+        )
+
     raise HTTPException(
         status_code=400,
         detail=(
             "Unsupported export format. "
-            "Use csv or xlsx."
+            "Use csv, xlsx, or pdf."
         ),
     )
 
