@@ -2117,3 +2117,83 @@ button {
     grid-template-columns: 1fr;
   }
 }
+
+/* ----------------------------------
+   VERIFIED REPORT EXPORT
+---------------------------------- */
+
+.results-header-actions {
+  display: grid;
+  justify-items: end;
+  gap: 12px;
+}
+
+.export-controls {
+  display: grid;
+  justify-items: end;
+  gap: 6px;
+}
+
+.export-controls > span {
+  color: #819990;
+  font-size: .62rem;
+}
+
+.export-controls > div {
+  display: flex;
+  gap: 7px;
+}
+
+.export-controls small {
+  max-width: 260px;
+  color: #8ea69d;
+  font-size: .6rem;
+  text-align: right;
+}
+
+.export-button {
+  padding: 8px 11px;
+  border:
+    1px solid
+    rgba(202, 221, 211, .13);
+  border-radius: 8px;
+  color: #b9ccc4;
+  background:
+    rgba(255, 255, 255, .025);
+  font-size: .66rem;
+  cursor: pointer;
+}
+
+.export-button:hover:not(
+  :disabled
+) {
+  border-color:
+    rgba(184, 220, 148, .3);
+  color: #e2edcf;
+}
+
+.export-button.primary {
+  color: #e3edc0;
+  border-color:
+    rgba(184, 220, 148, .25);
+  background:
+    rgba(184, 220, 148, .08);
+}
+
+.export-button:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+@media (
+  max-width: 680px
+) {
+  .results-header-actions,
+  .export-controls {
+    justify-items: start;
+  }
+
+  .export-controls small {
+    text-align: left;
+  }
+}

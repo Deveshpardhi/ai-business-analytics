@@ -1,10 +1,14 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 
 from app.db.database import SessionLocal
 from app.models.analysis import AnalysisRun
+from app.services.report_exporter import (
+    build_csv_export,
+    build_xlsx_export,
+)
 
 router = APIRouter(prefix="/analysis-runs", tags=["Analysis Runs"])
 
@@ -53,6 +57,117 @@ def get_analysis_run(
         "explained_insights": analysis_run.explained_insights,
         "recommended_insights": analysis_run.recommended_insights,
     }
+
+
+@router.get("/{analysis_run_id}/export/{export_format}")
+def export_analysis_run(
+    analysis_run_id: UUID,
+    export_format: str,
+    db: Session = Depends(get_db),
+):
+    analysis_run = (
+        db.query(AnalysisRun)
+        .filter(
+            AnalysisRun.id
+            == analysis_run_id
+        )
+        .first()
+    )
+
+    if analysis_run is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Analysis run not found",
+        )
+
+    export_format = (
+        export_format
+        .strip()
+        .lower()
+    )
+
+    base_filename = (
+        f"signal-ledger-"
+        f"{analysis_run.id}"
+    )
+
+    if export_format == "csv":
+        content = build_csv_export(
+            analysis_run.ranked_insights,
+            analysis_run.explained_insights,
+            analysis_run.recommended_insights,
+        )
+
+        return Response(
+            content=content,
+            media_type=(
+                "text/csv; "
+                "charset=utf-8"
+            ),
+            headers={
+                "Content-Disposition": (
+                    f'attachment; filename="'
+                    f'{base_filename}.csv"'
+                ),
+                "X-Export-Scope": (
+                    "ranked-verified-insights"
+                ),
+            },
+        )
+
+    if export_format == "xlsx":
+        content = build_xlsx_export(
+            run_id=analysis_run.id,
+            dataset_version_id=(
+                analysis_run
+                .dataset_version_id
+            ),
+            status=analysis_run.status,
+            created_at=(
+                analysis_run.created_at
+            ),
+            ranked_insights=(
+                analysis_run
+                .ranked_insights
+            ),
+            explained_insights=(
+                analysis_run
+                .explained_insights
+            ),
+            recommended_insights=(
+                analysis_run
+                .recommended_insights
+            ),
+        )
+
+        return Response(
+            content=content,
+            media_type=(
+                "application/"
+                "vnd.openxmlformats-"
+                "officedocument."
+                "spreadsheetml.sheet"
+            ),
+            headers={
+                "Content-Disposition": (
+                    f'attachment; filename="'
+                    f'{base_filename}.xlsx"'
+                ),
+                "X-Export-Scope": (
+                    "ranked-verified-insights"
+                ),
+            },
+        )
+
+    raise HTTPException(
+        status_code=400,
+        detail=(
+            "Unsupported export format. "
+            "Use csv or xlsx."
+        ),
+    )
+
+
 
 from app.models.dataset import DatasetVersion
 

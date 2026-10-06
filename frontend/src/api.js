@@ -94,3 +94,69 @@ export function loadAnalysisRuns(datasetVersionId) {
     `/analysis-runs/dataset-version/${datasetVersionId}`
   );
 }
+
+export async function downloadAnalysisRunExport(
+  analysisRunId,
+  format,
+) {
+  let response;
+
+  try {
+    response = await fetch(
+      `${API_BASE_URL}/analysis-runs/${analysisRunId}/export/${format}`
+    );
+  } catch {
+    throw new Error(
+      "The analytics API is unavailable. Check that the backend is running."
+    );
+  }
+
+  if (!response.ok) {
+    const payload =
+      await response
+        .json()
+        .catch(() => ({}));
+
+    throw new Error(
+      payload.detail ||
+      "The report could not be exported."
+    );
+  }
+
+  const blob =
+    await response.blob();
+
+  const disposition =
+    response.headers.get(
+      "content-disposition"
+    );
+
+  const filenameMatch =
+    disposition?.match(
+      /filename="?([^"]+)"?/i
+    );
+
+  const filename =
+    filenameMatch?.[1] ??
+    `signal-ledger-${analysisRunId}.${format}`;
+
+  const url =
+    URL.createObjectURL(blob);
+
+  const anchor =
+    document.createElement("a");
+
+  anchor.href = url;
+  anchor.download = filename;
+
+  document.body.appendChild(
+    anchor
+  );
+
+  anchor.click();
+  anchor.remove();
+
+  URL.revokeObjectURL(url);
+
+  return filename;
+}

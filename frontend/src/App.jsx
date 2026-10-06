@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from "react";
 
 import {
   analyzeDataset,
+  downloadAnalysisRunExport,
   loadAnalysisRun,
   loadAnalysisRuns,
   loadDatasetOverview,
@@ -2951,6 +2952,47 @@ function ResultsDashboard({
   const insights =
     analysis.ranked_insights ?? [];
 
+  const [
+    exportState,
+    setExportState,
+  ] = useState("idle");
+
+  const [
+    exportMessage,
+    setExportMessage,
+  ] = useState("");
+
+  async function handleExport(
+    format
+  ) {
+    if (
+      !analysis.analysis_run_id
+    ) {
+      return;
+    }
+
+    setExportState(format);
+    setExportMessage("");
+
+    try {
+      const filename =
+        await downloadAnalysisRunExport(
+          analysis.analysis_run_id,
+          format
+        );
+
+      setExportMessage(
+        `${filename} exported`
+      );
+    } catch (error) {
+      setExportMessage(
+        error.message
+      );
+    } finally {
+      setExportState("idle");
+    }
+  }
+
   const explanationByTitle =
     useMemo(
       () =>
@@ -3005,19 +3047,75 @@ function ResultsDashboard({
           )}
         </div>
 
-        <StatusPill
-          tone={
-            analysis.status ===
-            "completed"
-              ? "success"
-              : "warning"
-          }
-        >
-          {analysis.status?.replaceAll(
-            "_",
-            " "
+        <div className="results-header-actions">
+          <StatusPill
+            tone={
+              analysis.status ===
+              "completed"
+                ? "success"
+                : "warning"
+            }
+          >
+            {analysis.status?.replaceAll(
+              "_",
+              " "
+            )}
+          </StatusPill>
+
+          {analysis.analysis_run_id && (
+            <div className="export-controls">
+              <span>
+                Export verified report
+              </span>
+
+              <div>
+                <button
+                  type="button"
+                  className="export-button"
+                  disabled={
+                    exportState !==
+                    "idle"
+                  }
+                  onClick={() =>
+                    handleExport(
+                      "csv"
+                    )
+                  }
+                >
+                  {exportState ===
+                  "csv"
+                    ? "Exporting…"
+                    : "CSV"}
+                </button>
+
+                <button
+                  type="button"
+                  className="export-button primary"
+                  disabled={
+                    exportState !==
+                    "idle"
+                  }
+                  onClick={() =>
+                    handleExport(
+                      "xlsx"
+                    )
+                  }
+                >
+                  {exportState ===
+                  "xlsx"
+                    ? "Exporting…"
+                    : "Excel"}
+                </button>
+              </div>
+
+              {exportMessage && (
+                <small>
+                  {exportMessage}
+                </small>
+              )}
+            </div>
           )}
-        </StatusPill>
+        </div>
       </div>
 
       <ExecutiveSummary
