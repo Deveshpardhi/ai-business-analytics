@@ -58,3 +58,6 @@ GitHub Actions starts an isolated PostgreSQL service, applies the migrations,
 checks that model metadata has no pending migration operations, and runs the
 test suite. Local unit tests do not require Docker; set `DATABASE_URL` to a
 PostgreSQL database only when you want to exercise migrations against it.
+
+[![Architecture diagram](https://gitdiagram.com/diagram-badge.svg)](https://gitdiagram.com/deveshpardhi/ai-business-analytics?utm_source=readme&utm_medium=badge)
+
