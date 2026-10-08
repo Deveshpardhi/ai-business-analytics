@@ -36,6 +36,8 @@ class Settings(BaseSettings):
         "http://localhost:5173"
     )
 
+    log_level: str = "INFO"
+
     model_config = SettingsConfigDict(
         env_file=BASE_DIR / ".env",
         env_file_encoding="utf-8",
@@ -70,6 +72,27 @@ class Settings(BaseSettings):
             raise ValueError(
                 "DATABASE_URL must use "
                 "PostgreSQL or SQLite."
+            )
+
+        return value
+
+    @field_validator("log_level")
+    @classmethod
+    def validate_log_level(cls, value):
+        value = value.strip().upper()
+
+        allowed = {
+            "DEBUG",
+            "INFO",
+            "WARNING",
+            "ERROR",
+            "CRITICAL",
+        }
+
+        if value not in allowed:
+            raise ValueError(
+                "LOG_LEVEL must be one of: "
+                "DEBUG, INFO, WARNING, ERROR, CRITICAL."
             )
 
         return value

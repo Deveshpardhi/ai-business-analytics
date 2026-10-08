@@ -102,3 +102,18 @@ def test_azure_requires_credentials_when_enabled():
             azure_openai_api_key="",
             azure_openai_api_version="",
         )
+
+
+def test_log_level_is_normalized():
+    settings = make_settings(
+        log_level="warning"
+    )
+
+    assert settings.log_level == "WARNING"
+
+
+def test_invalid_log_level_is_rejected():
+    with pytest.raises(ValidationError):
+        make_settings(
+            log_level="verbose"
+        )

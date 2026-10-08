@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -11,6 +12,7 @@ from app.api.datasets import (
     router as datasets_router,
 )
 from app.core.config import settings
+from app.core.logging import configure_logging
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -19,6 +21,22 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 # provider adapters still read some values through
 # environment lookups.
 load_dotenv(PROJECT_ROOT / ".env")
+
+configure_logging(settings.log_level)
+
+logger = logging.getLogger(__name__)
+
+logger.info(
+    "Application configuration validated",
+    extra={
+        "event": "application_startup",
+        "provider": settings.llm_provider,
+        "llm_auto_limit":
+            settings.llm_auto_explanation_limit,
+        "cors_origin_count":
+            len(settings.cors_origins),
+    },
+)
 
 
 app = FastAPI(
