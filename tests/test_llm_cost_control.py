@@ -260,3 +260,63 @@ def test_rank_four_never_calls_llm(
         result[3]["explanation"]["source"]
         == "deterministic"
     )
+
+
+def test_llm_auto_limit_defaults_to_three(
+    monkeypatch,
+):
+    monkeypatch.delenv(
+        "LLM_AUTO_EXPLANATION_LIMIT",
+        raising=False,
+    )
+
+    assert (
+        insight_explainer
+        .get_llm_auto_explanation_limit()
+        == 3
+    )
+
+
+def test_llm_auto_limit_can_be_disabled(
+    monkeypatch,
+):
+    monkeypatch.setenv(
+        "LLM_AUTO_EXPLANATION_LIMIT",
+        "0",
+    )
+
+    assert (
+        insight_explainer
+        .get_llm_auto_explanation_limit()
+        == 0
+    )
+
+
+def test_llm_auto_limit_is_capped_at_ten(
+    monkeypatch,
+):
+    monkeypatch.setenv(
+        "LLM_AUTO_EXPLANATION_LIMIT",
+        "99",
+    )
+
+    assert (
+        insight_explainer
+        .get_llm_auto_explanation_limit()
+        == 10
+    )
+
+
+def test_invalid_llm_auto_limit_uses_default(
+    monkeypatch,
+):
+    monkeypatch.setenv(
+        "LLM_AUTO_EXPLANATION_LIMIT",
+        "invalid",
+    )
+
+    assert (
+        insight_explainer
+        .get_llm_auto_explanation_limit()
+        == 3
+    )

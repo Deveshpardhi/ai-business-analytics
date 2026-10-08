@@ -1,6 +1,9 @@
 import math
 from copy import deepcopy
 
+import logging
+import os
+
 from pydantic import ValidationError
 
 from app.schemas.explanation import (
@@ -65,6 +68,41 @@ def _canonicalize_evidence_numbers(value):
 
     return _canonicalize_number(value)
 
+
+
+logger = logging.getLogger(__name__)
+
+DEFAULT_LLM_AUTO_EXPLANATION_LIMIT = 3
+MAX_LLM_AUTO_EXPLANATION_LIMIT = 10
+
+
+def get_llm_auto_explanation_limit():
+    """
+    Return the maximum number of ranked insights
+    that may automatically call the LLM.
+    """
+    raw_value = os.getenv(
+        "LLM_AUTO_EXPLANATION_LIMIT",
+        str(DEFAULT_LLM_AUTO_EXPLANATION_LIMIT),
+    )
+
+    try:
+        value = int(raw_value)
+    except (TypeError, ValueError):
+        logger.warning(
+            "Invalid LLM_AUTO_EXPLANATION_LIMIT; "
+            "using default=%s",
+            DEFAULT_LLM_AUTO_EXPLANATION_LIMIT,
+        )
+        return DEFAULT_LLM_AUTO_EXPLANATION_LIMIT
+
+    return max(
+        0,
+        min(
+            value,
+            MAX_LLM_AUTO_EXPLANATION_LIMIT,
+        ),
+    )
 
 def build_verified_evidence_context(insight):
     """Return the only fields that are permitted to cross the LLM boundary."""
@@ -164,10 +202,20 @@ def explain_insight(
             llm_function,
         )
     except Exception as exc:
-        print(
-            "[LLM ERROR]",
+        status_code = (
+            getattr(exc, "code", None)
+            or getattr(
+                exc,
+                "status_code",
+                None,
+            )
+        )
+
+        logger.warning(
+            "LLM explanation provider unavailable: "
+            "type=%s status=%s",
             type(exc).__name__,
-            str(exc),
+            status_code,
         )
 
         return {

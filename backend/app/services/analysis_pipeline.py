@@ -2,6 +2,7 @@ from uuid import UUID
 
 from app.services.insight_explainer import (
     explain_ranked_insights,
+    get_llm_auto_explanation_limit,
 )
 from app.services.recommendation_engine import (
     recommend_insight,
@@ -182,7 +183,9 @@ def run_phase1_analysis(
         explained_insights = (
             explain_ranked_insights(
                 ranked_insights,
-                ai_limit=3,
+                ai_limit=(
+                    get_llm_auto_explanation_limit()
+                ),
             )
         )
 
