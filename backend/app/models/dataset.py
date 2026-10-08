@@ -1,4 +1,5 @@
 import uuid
+from typing import TYPE_CHECKING
 from datetime import datetime
 
 from sqlalchemy import DateTime, ForeignKey, String, Text, UniqueConstraint
@@ -7,12 +8,25 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
 
+if TYPE_CHECKING:
+    from app.models.user import User
+
+
 class Dataset(Base):
     __tablename__ = "datasets"
 
     id: Mapped[uuid.UUID] = mapped_column(
         primary_key=True,
         default=uuid.uuid4,
+    )
+
+    # Nullable temporarily so existing pre-authentication
+    # datasets can survive the ownership migration.
+    # New uploads will always receive an authenticated owner.
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id"),
+        nullable=True,
+        index=True,
     )
 
     name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -26,6 +40,11 @@ class Dataset(Base):
         DateTime,
         default=datetime.utcnow,
         nullable=False,
+    )
+
+    user: Mapped["User | None"] = relationship(
+        "User",
+        back_populates="datasets",
     )
 
     versions: Mapped[list["DatasetVersion"]] = relationship(
