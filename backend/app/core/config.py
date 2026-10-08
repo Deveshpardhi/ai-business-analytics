@@ -38,6 +38,13 @@ class Settings(BaseSettings):
 
     log_level: str = "INFO"
 
+    auth_jwt_secret: str = ""
+    auth_access_token_minutes: int = Field(
+        default=30,
+        ge=5,
+        le=1440,
+    )
+
     model_config = SettingsConfigDict(
         env_file=BASE_DIR / ".env",
         env_file_encoding="utf-8",
