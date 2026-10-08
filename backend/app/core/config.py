@@ -1,0 +1,152 @@
+from pathlib import Path
+from typing import Literal
+
+from pydantic import Field, field_validator, model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.engine import make_url
+
+
+BASE_DIR = Path(__file__).resolve().parents[3]
+
+
+class Settings(BaseSettings):
+    database_url: str
+
+    llm_provider: Literal[
+        "gemini",
+        "azure_openai",
+        "mock",
+    ] = "mock"
+
+    llm_model: str = ""
+
+    llm_auto_explanation_limit: int = Field(
+        default=0,
+        ge=0,
+        le=10,
+    )
+
+    gemini_api_key: str = ""
+
+    azure_openai_endpoint: str = ""
+    azure_openai_api_key: str = ""
+    azure_openai_api_version: str = ""
+
+    cors_allow_origins: str = (
+        "http://localhost:5173"
+    )
+
+    model_config = SettingsConfigDict(
+        env_file=BASE_DIR / ".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+        case_sensitive=False,
+    )
+
+    @field_validator("database_url")
+    @classmethod
+    def validate_database_url(cls, value):
+        value = value.strip()
+
+        if not value:
+            raise ValueError(
+                "DATABASE_URL is required."
+            )
+
+        try:
+            parsed = make_url(value)
+        except Exception as exc:
+            raise ValueError(
+                "DATABASE_URL is not a valid "
+                "SQLAlchemy database URL."
+            ) from exc
+
+        driver = parsed.drivername
+
+        if not (
+            driver.startswith("postgresql")
+            or driver.startswith("sqlite")
+        ):
+            raise ValueError(
+                "DATABASE_URL must use "
+                "PostgreSQL or SQLite."
+            )
+
+        return value
+
+    @field_validator("cors_allow_origins")
+    @classmethod
+    def validate_cors_origins(cls, value):
+        origins = [
+            origin.strip()
+            for origin in value.split(",")
+            if origin.strip()
+        ]
+
+        if not origins:
+            raise ValueError(
+                "CORS_ALLOW_ORIGINS must contain "
+                "at least one origin."
+            )
+
+        return value
+
+    @model_validator(mode="after")
+    def validate_llm_configuration(self):
+        # LLM completely disabled for automatic
+        # explanations. Credentials are not required.
+        if self.llm_auto_explanation_limit == 0:
+            return self
+
+        if not self.llm_model.strip():
+            raise ValueError(
+                "LLM_MODEL is required when "
+                "automatic LLM explanations "
+                "are enabled."
+            )
+
+        if self.llm_provider == "gemini":
+            if not self.gemini_api_key.strip():
+                raise ValueError(
+                    "GEMINI_API_KEY is required "
+                    "when Gemini automatic "
+                    "explanations are enabled."
+                )
+
+        elif self.llm_provider == "azure_openai":
+            missing = []
+
+            if not self.azure_openai_endpoint.strip():
+                missing.append(
+                    "AZURE_OPENAI_ENDPOINT"
+                )
+
+            if not self.azure_openai_api_key.strip():
+                missing.append(
+                    "AZURE_OPENAI_API_KEY"
+                )
+
+            if not self.azure_openai_api_version.strip():
+                missing.append(
+                    "AZURE_OPENAI_API_VERSION"
+                )
+
+            if missing:
+                raise ValueError(
+                    "Missing Azure OpenAI "
+                    "configuration: "
+                    + ", ".join(missing)
+                )
+
+        return self
+
+    @property
+    def cors_origins(self):
+        return [
+            origin.strip()
+            for origin in self.cors_allow_origins.split(",")
+            if origin.strip()
+        ]
+
+
+settings = Settings()
