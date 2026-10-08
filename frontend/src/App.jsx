@@ -2548,9 +2548,26 @@ function InsightCard({
       </div>
 
       <div className="explanation-block">
-        <h4>
-          Grounded explanation
-        </h4>
+        <div className="explanation-heading">
+          <h4>
+            Grounded explanation
+          </h4>
+
+          {explanation?.status === "approved" &&
+            explanation?.source && (
+              <span
+                className={`explanation-source ${
+                  explanation.source === "llm"
+                    ? "ai"
+                    : "deterministic"
+                }`}
+              >
+                {explanation.source === "llm"
+                  ? "AI-assisted"
+                  : "Deterministic"}
+              </span>
+            )}
+        </div>
 
         {explanation?.status ===
         "approved" ? (

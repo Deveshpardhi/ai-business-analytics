@@ -2197,3 +2197,40 @@ button {
     text-align: left;
   }
 }
+
+.explanation-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.explanation-heading h4 {
+  margin: 0;
+}
+
+.explanation-source {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font:
+    .65rem/1
+    "DM Mono",
+    monospace;
+  letter-spacing: .04em;
+  white-space: nowrap;
+}
+
+.explanation-source.ai {
+  background: rgba(115, 151, 255, .12);
+  border: 1px solid rgba(115, 151, 255, .28);
+  color: #b8c8ff;
+}
+
+.explanation-source.deterministic {
+  background: rgba(151, 196, 120, .10);
+  border: 1px solid rgba(151, 196, 120, .25);
+  color: #c5e3ae;
+}
