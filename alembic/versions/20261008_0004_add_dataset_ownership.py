@@ -32,10 +32,6 @@ depends_on: Union[
 
 
 def upgrade() -> None:
-    # Existing datasets predate authentication.
-    # Keep this nullable for migration compatibility.
-    # Application code will require ownership for
-    # all newly uploaded datasets.
     with op.batch_alter_table(
         "datasets"
     ) as batch_op:

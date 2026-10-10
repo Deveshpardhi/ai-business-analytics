@@ -2,10 +2,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.db.base import Base
-from app.models.dataset import (
-    Dataset,
-    DatasetVersion,
-)
+from app.models.dataset import Dataset
 from app.models.user import User
 from app.security.passwords import hash_password
 
@@ -67,20 +64,18 @@ def test_user_can_have_multiple_datasets():
         db.add(user)
         db.flush()
 
-        first = Dataset(
-            name="First Dataset",
-            user_id=user.id,
+        db.add_all(
+            [
+                Dataset(
+                    name="First Dataset",
+                    user_id=user.id,
+                ),
+                Dataset(
+                    name="Second Dataset",
+                    user_id=user.id,
+                ),
+            ]
         )
-
-        second = Dataset(
-            name="Second Dataset",
-            user_id=user.id,
-        )
-
-        db.add_all([
-            first,
-            second,
-        ])
 
         db.commit()
         db.refresh(user)
